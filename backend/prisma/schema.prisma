@@ -1,0 +1,22 @@
+// Este é o arquivo de Schema do Prisma, a planta baixa do seu banco de dados.
+
+// Configura o cliente Prisma que será gerado para uso no seu código.
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Define a fonte de dados, ou seja, onde seu banco de dados está.
+datasource db {
+  provider = "postgresql" // Informa que estamos usando um banco de dados PostgreSQL.
+  url      = env("DATABASE_URL") // Diz ao Prisma para pegar a chave secreta do nosso arquivo .env
+}
+
+// ==================================================================
+// NOSSO PRIMEIRO MODELO - A PLANTA DA NOSSA TABELA DE PRODUTOS
+// ==================================================================
+model Product {
+  id        String   @id @default(uuid()) // Campo de ID: será um texto único, gerado automaticamente.
+  name      String                         // Campo de nome: será um texto (obrigatório).
+  price     Decimal                        // Campo de preço: será um número decimal de alta precisão.
+  createdAt DateTime @default(now())        // Campo de data de criação: será preenchido automaticamente com a data e hora atuais.
+}
