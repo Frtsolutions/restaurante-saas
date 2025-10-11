@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
+import { Decimal } from '@prisma/client/runtime/library';
 
 const app = express();
 app.use(cors());
@@ -16,21 +17,73 @@ const io = new Server(server, {
 const prisma = new PrismaClient();
 const port = 3333;
 
-// --- Rotas de Produtos ---
-app.get('/products', async (request, response) => {
-  const products = await prisma.product.findMany();
-  return response.status(200).json(products);
+// ==================================================================
+// ROTAS DE INGREDIENTES / INSUMOS
+// ==================================================================
+// Rota para LISTAR todos os ingredientes
+app.get('/ingredients', async (request, response) => {
+  const ingredients = await prisma.ingredient.findMany({ orderBy: { name: 'asc' } });
+  return response.json(ingredients);
+});
+
+// Rota para CRIAR um novo ingrediente
+app.post('/ingredients', async (request, response) => {
+  const { name, stockQuantity, unit } = request.body;
+  try {
+    const ingredient = await prisma.ingredient.create({
+      data: {
+        name,
+        stockQuantity: new Decimal(stockQuantity),
+        unit
+      }
+    });
+    return response.status(201).json(ingredient);
+  } catch (error) {
+    return response.status(409).json({ message: "Ingredient name already exists." });
+  }
 });
 
 // ==================================================================
-// ✨ NOSSAS NOVAS ROTAS PARA GERENCIAR MESAS
+// ROTAS DE PRODUTOS
+// ==================================================================
+// Rota para LISTAR todos os produtos
+app.get('/products', async (request, response) => {
+  const products = await prisma.product.findMany({
+    orderBy: { name: 'asc' }
+  });
+  return response.status(200).json(products);
+});
+
+// Rota para CRIAR um novo produto (agora com Ficha Técnica/Receita)
+app.post('/products', async (request, response) => {
+  const { name, price, recipeItems } = request.body; // recipeItems: { ingredientId: string, quantity: number }[]
+
+  try {
+    const product = await prisma.product.create({
+      data: {
+        name,
+        price: new Decimal(price),
+        recipeItems: recipeItems && recipeItems.length > 0 ? {
+          create: recipeItems.map((item: any) => ({
+            ingredientId: item.ingredientId,
+            quantity: new Decimal(item.quantity)
+          }))
+        } : undefined
+      }
+    });
+    return response.status(201).json(product);
+  } catch (error) {
+     return response.status(409).json({ message: "Product name already exists." });
+  }
+});
+
+// ==================================================================
+// ROTAS DE MESAS
 // ==================================================================
 // Rota para LISTAR todas as mesas
 app.get('/tables', async (request, response) => {
   const tables = await prisma.table.findMany({
-    orderBy: {
-      name: 'asc' // Ordena as mesas pelo nome
-    }
+    orderBy: { name: 'asc' }
   });
   return response.status(200).json(tables);
 });
@@ -44,46 +97,88 @@ app.post('/tables', async (request, response) => {
     });
     return response.status(201).json(table);
   } catch (error) {
-    // Retorna um erro caso o nome da mesa já exista
     return response.status(409).json({ message: "Table name already exists." });
   }
 });
 
-// --- Rota de Pedidos (COM ATUALIZAÇÃO) ---
-type OrderItemInput = {
-  productId: string;
-  quantity: number;
-}
+// ==================================================================
+// ROTA DE PEDIDOS (com Baixa Automática de Estoque)
+// ==================================================================
+type OrderItemInput = { productId: string; quantity: number; }
 
 app.post('/orders', async (request, response) => {
-  // ✨ ATUALIZAÇÃO: Agora recebemos um `tableId` opcional
   const { items, tableId } = request.body as { items: OrderItemInput[], tableId?: string };
 
+  // Busca os produtos do pedido, já incluindo suas receitas
   const productIds = items.map(item => item.productId);
-  const productsInDb = await prisma.product.findMany({ where: { id: { in: productIds } } });
-  let total = 0;
+  const productsInDb = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    include: { recipeItems: true }
+  });
+
+  // Prepara as operações de atualização de estoque
+  const stockUpdates: any[] = [];
   for (const item of items) {
     const product = productsInDb.find(p => p.id === item.productId);
-    if (product) {
-      total += Number(product.price) * item.quantity;
+    if (!product) continue; // Pula se o produto não for encontrado
+
+    if (product.recipeItems.length > 0) {
+      // Caso 1: Produto tem receita, dá baixa nos ingredientes
+      for (const recipeItem of product.recipeItems) {
+        stockUpdates.push(prisma.ingredient.update({
+          where: { id: recipeItem.ingredientId },
+          data: {
+            stockQuantity: {
+              decrement: new Decimal(recipeItem.quantity).mul(item.quantity)
+            }
+          }
+        }));
+      }
+    } else {
+      // Caso 2: Produto não tem receita (ex: bebida), procura um insumo com o mesmo nome
+      const ingredientAsProduct = await prisma.ingredient.findFirst({ where: { name: product.name }});
+      if(ingredientAsProduct) {
+        stockUpdates.push(prisma.ingredient.update({
+          where: { id: ingredientAsProduct.id },
+          data: { stockQuantity: { decrement: item.quantity } }
+        }));
+      }
     }
   }
+  
+  // Calcula o total do pedido no backend para segurança
+  const total = productsInDb.reduce((acc, product) => {
+    const orderItem = items.find(item => item.productId === product.id);
+    const itemQuantity = orderItem ? orderItem.quantity : 0;
+    return acc + (Number(product.price) * itemQuantity);
+  }, 0);
+  
+  // Executa a criação do pedido e a baixa de estoque em uma única transação
+  try {
+    const [createdOrder] = await prisma.$transaction([
+      prisma.order.create({
+        data: {
+          total,
+          tableId,
+          items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
+        },
+        include: { items: { include: { product: true } } }
+      }),
+      ...stockUpdates
+    ]);
 
-  const createdOrder = await prisma.order.create({
-    data: {
-      total: total,
-      tableId: tableId, // ✨ ATUALIZAÇÃO: Associamos o pedido à mesa, se o ID for fornecido
-      items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
-    },
-    include: { items: { include: { product: true } } }
-  });
-  io.emit('new_order', createdOrder);
-  return response.status(201).json(createdOrder);
+    io.emit('new_order', createdOrder);
+    return response.status(201).json(createdOrder);
+  } catch (error) {
+    console.error("Transaction failed: ", error);
+    return response.status(500).json({ message: "Failed to process order and update stock." });
+  }
 });
 
-// --- Rota do Dashboard ---
+// ==================================================================
+// ROTA DE DASHBOARD
+// ==================================================================
 app.get('/dashboard/today', async (request, response) => {
-    // ...código do dashboard sem alteração...
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -122,7 +217,9 @@ app.get('/dashboard/today', async (request, response) => {
     return response.status(200).json(dashboardData);
 });
 
-// --- Inicia o servidor ---
+// ==================================================================
+// INICIA O SERVIDOR
+// ==================================================================
 server.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
 });

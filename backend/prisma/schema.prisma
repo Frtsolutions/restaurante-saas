@@ -7,22 +7,41 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Product {
-  id          String      @id @default(uuid())
-  name        String
-  price       Decimal
-  createdAt   DateTime    @default(now())
-  orderItems  OrderItem[]
+// ✨ NOVO MODELO PARA INSUMOS / INGREDIENTES ✨
+model Ingredient {
+  id            String       @id @default(uuid())
+  name          String       @unique
+  stockQuantity Decimal      // Quantidade em estoque
+  unit          String       // Unidade de medida (ex: 'un', 'g', 'kg', 'ml', 'l')
+  recipeItems   RecipeItem[] // Relação: pode estar em várias receitas
 }
 
-// ==================================================================
-// ✨ NOSSO NOVO MODELO DE MESAS (TABLES)
-// ==================================================================
+// ✨ NOVO MODELO PARA O ITEM DA RECEITA (FICHA TÉCNICA) ✨
+// Esta é uma "tabela de junção" que conecta Produtos e Ingredientes.
+model RecipeItem {
+  id           String     @id @default(uuid())
+  quantity     Decimal    // Quantidade do ingrediente necessária para o produto
+
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id])
+
+  ingredientId String
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+}
+
+model Product {
+  id          String       @id @default(uuid())
+  name        String
+  price       Decimal
+  createdAt   DateTime     @default(now())
+  orderItems  OrderItem[]
+  recipeItems RecipeItem[] // Relação: um produto pode ter vários itens na sua receita
+}
+
 model Table {
-  id      String    @id @default(uuid())
-  name    String    @unique // O nome da mesa (ex: "Mesa 01") deve ser único.
-  // Relação: Uma mesa pode ter vários pedidos ao longo do tempo.
-  orders  Order[]
+  id     String  @id @default(uuid())
+  name   String  @unique
+  orders Order[]
 }
 
 model Order {
@@ -30,10 +49,6 @@ model Order {
   total     Decimal
   createdAt DateTime    @default(now())
   items     OrderItem[]
-
-  // ✨ ATUALIZAÇÃO AQUI ✨
-  // Relação Opcional com a Mesa: um pedido PODE pertencer a uma mesa.
-  // O '?' torna o campo opcional.
   tableId   String?
   table     Table?      @relation(fields: [tableId], references: [id])
 }
