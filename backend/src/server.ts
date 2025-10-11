@@ -16,14 +16,49 @@ const io = new Server(server, {
 const prisma = new PrismaClient();
 const port = 3333;
 
-// --- Rotas existentes (sem alteração) ---
+// --- Rotas de Produtos ---
 app.get('/products', async (request, response) => {
   const products = await prisma.product.findMany();
   return response.status(200).json(products);
 });
 
+// ==================================================================
+// ✨ NOSSAS NOVAS ROTAS PARA GERENCIAR MESAS
+// ==================================================================
+// Rota para LISTAR todas as mesas
+app.get('/tables', async (request, response) => {
+  const tables = await prisma.table.findMany({
+    orderBy: {
+      name: 'asc' // Ordena as mesas pelo nome
+    }
+  });
+  return response.status(200).json(tables);
+});
+
+// Rota para CRIAR uma nova mesa
+app.post('/tables', async (request, response) => {
+  const { name } = request.body;
+  try {
+    const table = await prisma.table.create({
+      data: { name }
+    });
+    return response.status(201).json(table);
+  } catch (error) {
+    // Retorna um erro caso o nome da mesa já exista
+    return response.status(409).json({ message: "Table name already exists." });
+  }
+});
+
+// --- Rota de Pedidos (COM ATUALIZAÇÃO) ---
+type OrderItemInput = {
+  productId: string;
+  quantity: number;
+}
+
 app.post('/orders', async (request, response) => {
-  const items: { productId: string; quantity: number }[] = request.body.items;
+  // ✨ ATUALIZAÇÃO: Agora recebemos um `tableId` opcional
+  const { items, tableId } = request.body as { items: OrderItemInput[], tableId?: string };
+
   const productIds = items.map(item => item.productId);
   const productsInDb = await prisma.product.findMany({ where: { id: { in: productIds } } });
   let total = 0;
@@ -33,9 +68,11 @@ app.post('/orders', async (request, response) => {
       total += Number(product.price) * item.quantity;
     }
   }
+
   const createdOrder = await prisma.order.create({
     data: {
       total: total,
+      tableId: tableId, // ✨ ATUALIZAÇÃO: Associamos o pedido à mesa, se o ID for fornecido
       items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
     },
     include: { items: { include: { product: true } } }
@@ -44,73 +81,45 @@ app.post('/orders', async (request, response) => {
   return response.status(201).json(createdOrder);
 });
 
-// ==================================================================
-// ✨ NOSSA NOVA ROTA PARA O DASHBOARD
-// ==================================================================
+// --- Rota do Dashboard ---
 app.get('/dashboard/today', async (request, response) => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Define a data para o início do dia (meia-noite)
+    // ...código do dashboard sem alteração...
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  // 1. Calcula o total faturado e o número de pedidos de hoje
-  const salesData = await prisma.order.aggregate({
-    where: {
-      createdAt: {
-        gte: today // 'gte' significa 'greater than or equal to' (maior ou igual a)
-      }
-    },
-    _sum: {
-      total: true // Soma a coluna 'total'
-    },
-    _count: {
-      id: true // Conta a coluna 'id' para saber o número de pedidos
-    }
-  });
+    const salesData = await prisma.order.aggregate({
+        where: { createdAt: { gte: today } },
+        _sum: { total: true },
+        _count: { id: true }
+    });
 
-  // 2. Encontra os produtos mais vendidos de hoje
-  const topProductsRaw = await prisma.orderItem.groupBy({
-    by: ['productId'],
-    where: {
-      order: {
-        createdAt: {
-          gte: today
+    const topProductsRaw = await prisma.orderItem.groupBy({
+        by: ['productId'],
+        where: { order: { createdAt: { gte: today } } },
+        _sum: { quantity: true },
+        orderBy: { _sum: { quantity: 'desc' } },
+        take: 5
+    });
+
+    const topProductIds = topProductsRaw.map(p => p.productId);
+    const productDetails = await prisma.product.findMany({ where: { id: { in: topProductIds } } });
+
+    const topProducts = topProductsRaw.map(p => {
+        const product = productDetails.find(pd => pd.id === p.productId);
+        return {
+            productId: p.productId,
+            name: product?.name || 'Produto não encontrado',
+            quantitySold: p._sum.quantity
         }
-      }
-    },
-    _sum: {
-      quantity: true // Soma a quantidade de cada produto
-    },
-    orderBy: {
-      _sum: {
-        quantity: 'desc' // Ordena pela soma da quantidade, em ordem decrescente
-      }
-    },
-    take: 5 // Pega os 5 primeiros (o top 5)
-  });
+    });
 
-  // 3. Busca os nomes dos produtos mais vendidos
-  const topProductIds = topProductsRaw.map(p => p.productId);
-  const productDetails = await prisma.product.findMany({
-    where: { id: { in: topProductIds } }
-  });
+    const dashboardData = {
+        totalRevenue: salesData._sum.total || 0,
+        orderCount: salesData._count.id || 0,
+        topProducts: topProducts
+    };
 
-  // 4. Junta as informações para um resultado mais amigável
-  const topProducts = topProductsRaw.map(p => {
-    const product = productDetails.find(pd => pd.id === p.productId);
-    return {
-      productId: p.productId,
-      name: product?.name || 'Produto não encontrado',
-      quantitySold: p._sum.quantity
-    }
-  });
-
-  // 5. Monta o objeto final da resposta
-  const dashboardData = {
-    totalRevenue: salesData._sum.total || 0,
-    orderCount: salesData._count.id || 0,
-    topProducts: topProducts
-  };
-
-  return response.status(200).json(dashboardData);
+    return response.status(200).json(dashboardData);
 });
 
 // --- Inicia o servidor ---

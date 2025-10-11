@@ -3,137 +3,60 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 
 // ==================================================================
-// INTERFACES (NOSSOS MOLDES DE DADOS)
+// INTERFACES (MOLDES DE DADOS)
 // ==================================================================
-interface Product {
-  id: string;
-  name: string;
-  price: string;
-}
+interface Product { id: string; name: string; price: string; }
+interface OrderItem extends Product { quantity: number; }
+interface FullOrder { id: string; total: number; createdAt: string; items: { id: string; quantity: number; product: Product; }[]; }
+interface DashboardData { totalRevenue: number; orderCount: number; topProducts: { productId: string; name: string; quantitySold: number; }[]; }
+interface Table { id: string; name: string; }
 
-interface OrderItem extends Product {
-  quantity: number;
-}
-
-interface FullOrder {
-  id: string;
-  total: number;
-  createdAt: string;
-  items: {
-    id: string;
-    quantity: number;
-    product: Product;
-  }[];
-}
-
-interface DashboardData {
-  totalRevenue: number; // A API pode mandar como string, mas trataremos na exibição
-  orderCount: number;
-  topProducts: {
-    productId: string;
-    name: string;
-    quantitySold: number;
-  }[];
-}
-
-// Conexão com o servidor de WebSocket
 const socket = io('http://localhost:3333');
 
 // ==================================================================
-// COMPONENTE PARA O DASHBOARD
+// COMPONENTE PRINCIPAL APP
 // ==================================================================
-function DashboardComponent() {
-  const [data, setData] = useState<DashboardData>({ totalRevenue: 0, orderCount: 0, topProducts: [] });
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await axios.get('http://localhost:3333/dashboard/today');
-        setData(response.data);
-      } catch (error) {
-        console.error("Erro ao buscar dados do dashboard:", error);
-      }
-    }
-    fetchData();
-  }, []);
-
-  return (
-    <div style={{ padding: '20px' }}>
-      <h1>Dashboard - Vendas de Hoje</h1>
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
-        <div style={{ border: '1px solid #ccc', padding: '20px', flex: 1, borderRadius: '8px' }}>
-          <h2>Faturamento Total</h2>
-          {/* ✨ A CORREÇÃO ESTÁ AQUI ✨ */}
-          <p style={{ fontSize: '24px', fontWeight: 'bold' }}>R$ {parseFloat(String(data.totalRevenue)).toFixed(2)}</p>
-        </div>
-        <div style={{ border: '1px solid #ccc', padding: '20px', flex: 1, borderRadius: '8px' }}>
-          <h2>Total de Pedidos</h2>
-          <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{data.orderCount}</p>
-        </div>
-      </div>
-      <div>
-        <h2>Top 5 Produtos Mais Vendidos</h2>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          {data.topProducts.map((product) => (
-            <li key={product.productId} style={{ borderBottom: '1px solid #eee', padding: '10px 0', display: 'flex', justifyContent: 'space-between' }}>
-              <span>{product.name}</span>
-              <strong>{product.quantitySold} unidades vendidas</strong>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-// ==================================================================
-// COMPONENTE PARA O KDS (TELA DA COZINHA)
-// ==================================================================
-function KdsComponent() {
-  const [orders, setOrders] = useState<FullOrder[]>([]);
-
-  useEffect(() => {
-    socket.on('new_order', (newOrder: FullOrder) => {
-      setOrders(prevOrders => [newOrder, ...prevOrders]);
-    });
-
-    return () => {
-      socket.off('new_order');
-    };
-  }, []);
-
-  return (
-    <div style={{ padding: '10px' }}>
-      <h1>KDS - Cozinha</h1>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-        {orders.length === 0 && <p>Aguardando novos pedidos...</p>}
-        {orders.map(order => (
-          <div key={order.id} style={{ border: '2px solid black', padding: '15px', minWidth: '250px', borderRadius: '8px' }}>
-            <h3>Pedido #{order.id.substring(0, 6)}</h3>
-            <ul style={{ paddingLeft: '20px' }}>
-              {order.items.map(item => (
-                <li key={item.id}>
-                  <strong>{item.quantity}x</strong> {item.product.name}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ==================================================================
-// COMPONENTE PARA O PDV (PONTO DE VENDA)
-// ==================================================================
-function PdvComponent() {
+function App() {
+  // --- Estados Principais ---
+  const [currentView, setCurrentView] = useState('TABLE_SELECTION'); // TABLE_SELECTION, ORDER, DASHBOARD
+  const [tables, setTables] = useState<Table[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   
+  // --- Estados para KDS e Dashboard ---
+  const [kdsOrders, setKdsOrders] = useState<FullOrder[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData>({ totalRevenue: 0, orderCount: 0, topProducts: [] });
+
+  // --- Efeitos para buscar dados e ouvir eventos ---
   useEffect(() => {
+    axios.get('http://localhost:3333/tables').then(response => setTables(response.data));
     axios.get('http://localhost:3333/products').then(response => setProducts(response.data));
+
+    socket.on('new_order', (newOrder: FullOrder) => {
+      setKdsOrders(prevOrders => [newOrder, ...prevOrders]);
+    });
+
+    return () => { socket.off('new_order'); };
   }, []);
+
+  useEffect(() => {
+    if (currentView === 'DASHBOARD') {
+      axios.get('http://localhost:3333/dashboard/today').then(response => setDashboardData(response.data));
+    }
+  }, [currentView]);
+
+  // --- Funções de Lógica de Negócio ---
+  function handleSelectTable(table: Table) {
+    setSelectedTable(table);
+    setCurrentView('ORDER');
+  }
+
+  function handleGoBackToTables() {
+    setSelectedTable(null);
+    setOrderItems([]);
+    setCurrentView('TABLE_SELECTION');
+  }
 
   function addProductToOrder(product: Product) {
     const existing = orderItems.find(item => item.id === product.id);
@@ -147,94 +70,98 @@ function PdvComponent() {
   const calculateTotal = () => orderItems.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0).toFixed(2);
 
   async function handleFinalizeOrder() {
-    const payload = { items: orderItems.map(item => ({ productId: item.id, quantity: item.quantity })) };
+    const payload = {
+      tableId: selectedTable?.id,
+      items: orderItems.map(item => ({ productId: item.id, quantity: item.quantity })),
+    };
     try {
       await axios.post('http://localhost:3333/orders', payload);
-      alert('Pedido finalizado com sucesso!');
-      setOrderItems([]);
+      alert(`Pedido para a ${selectedTable?.name} finalizado com sucesso!`);
+      handleGoBackToTables();
     } catch (error) {
-      console.error("Erro ao finalizar o pedido:", error)
+      console.error("Erro ao finalizar o pedido:", error);
       alert('Erro ao finalizar o pedido.');
     }
   }
 
-  return (
-    <div style={{ display: 'flex', width: '100%' }}>
-      <div style={{ width: '50%', padding: '10px' }}>
-        <h1>Cardápio</h1>
-        <ul style={{ listStyle: 'none', padding: 0 }}>
-          {products.map(p => (
-            <li 
-              key={p.id} 
-              onClick={() => addProductToOrder(p)} 
-              style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '5px', cursor: 'pointer', borderRadius: '5px' }}
-            >
-              {p.name} - R$ {p.price}
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div style={{ width: '50%', padding: '10px', borderLeft: '2px solid #eee' }}>
-        <h1>Comanda</h1>
-        {orderItems.length === 0 ? (
-          <p>Nenhum item adicionado.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {orderItems.map(item => (
-              <li key={item.id} style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{item.name} (x{item.quantity})</span>
-                <span>R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <hr />
-        <h2>Total: R$ {calculateTotal()}</h2>
-        <button 
-          onClick={handleFinalizeOrder} 
-          disabled={orderItems.length === 0} 
-          style={{ width: '100%', padding: '15px', fontSize: '16px', backgroundColor: orderItems.length === 0 ? 'grey' : 'green', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '5px' }}
-        >
-          Finalizar Pedido
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
-// ==================================================================
-// CONTAINER PARA JUNTAR O PDV E O KDS
-// ==================================================================
-function PdvAndKdsContainer() {
-  return (
-    <>
-      <PdvComponent />
-      <hr style={{ border: '2px solid blue', margin: '20px 0' }} />
-      <KdsComponent />
-    </>
-  )
-}
-
-// ==================================================================
-// COMPONENTE PRINCIPAL COM A NAVEGAÇÃO
-// ==================================================================
-function App() {
-  const [view, setView] = useState('PDV'); // 'PDV' ou 'DASHBOARD'
+  // --- Renderização dos Componentes ---
+  const renderView = () => {
+    switch (currentView) {
+      case 'DASHBOARD':
+        return (
+            <div style={{ padding: '20px' }}>
+              <h1>Dashboard - Vendas de Hoje</h1>
+              <p>Faturamento Total: R$ {parseFloat(String(dashboardData.totalRevenue)).toFixed(2)}</p>
+              <p>Total de Pedidos: {dashboardData.orderCount}</p>
+              <h2>Top 5 Produtos</h2>
+              <ul>{dashboardData.topProducts.map(p => <li key={p.productId}>{p.name} - {p.quantitySold} vendidos</li>)}</ul>
+            </div>
+        );
+      case 'ORDER':
+        return (
+            <div style={{ padding: '10px' }}>
+                <button onClick={handleGoBackToTables}>&larr; Voltar para Mesas</button>
+                <h1>Comanda - {selectedTable?.name}</h1>
+                <div style={{ display: 'flex' }}>
+                    <div style={{ width: '50%' }}>
+                        <h2>Cardápio</h2>
+                        {products.map(p => <div key={p.id} onClick={() => addProductToOrder(p)} style={{ border: '1px solid #ccc', padding: '10px', cursor: 'pointer', marginBottom: '5px' }}>{p.name} - R$ {p.price}</div>)}
+                    </div>
+                    <div style={{ width: '50%', paddingLeft: '10px' }}>
+                        <h2>Itens</h2>
+                        {orderItems.map(item => <div key={item.id}>{item.name} (x{item.quantity})</div>)}
+                        <hr />
+                        <h3>Total: R$ {calculateTotal()}</h3>
+                        <button onClick={handleFinalizeOrder} disabled={orderItems.length === 0}>Finalizar Pedido</button>
+                    </div>
+                </div>
+            </div>
+        );
+      case 'TABLE_SELECTION':
+      default:
+        return (
+            <div style={{ padding: '20px' }}>
+              <h1>Seleção de Mesas</h1>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>
+                {tables.map(table => (
+                  <div key={table.id} onClick={() => handleSelectTable(table)} style={{ border: '2px solid green', borderRadius: '10px', width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold' }}>
+                    {table.name}
+                  </div>
+                ))}
+              </div>
+              <hr style={{ margin: '30px 0' }} />
+              {/* KDS */}
+              <div>
+                <h1>KDS - Cozinha</h1>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                  {kdsOrders.length === 0 && <p>Aguardando novos pedidos...</p>}
+                  {/* ✨ A CORREÇÃO ESTÁ AQUI DENTRO ✨ */}
+                  {kdsOrders.map(order => (
+                    <div key={order.id} style={{ border: '2px solid black', padding: '15px', minWidth: '250px', borderRadius: '8px' }}>
+                      <h3>Pedido #{order.id.substring(0, 6)}</h3>
+                      <ul style={{ paddingLeft: '20px' }}>
+                        {order.items.map(item => (
+                          <li key={item.id}>
+                            <strong>{item.quantity}x</strong> {item.product.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+        );
+    }
+  };
 
   return (
     <div style={{ fontFamily: 'sans-serif' }}>
-      <nav style={{ background: '#f0f0f0', padding: '10px', display: 'flex', gap: '10px', borderBottom: '1px solid #ccc' }}>
-        <button onClick={() => setView('PDV')} style={{ padding: '10px', fontSize: '16px', background: view === 'PDV' ? 'royalblue' : 'white', color: view === 'PDV' ? 'white' : 'black' }}>
-          PDV & KDS
-        </button>
-        <button onClick={() => setView('DASHBOARD')} style={{ padding: '10px', fontSize: '16px', background: view === 'DASHBOARD' ? 'royalblue' : 'white', color: view === 'DASHBOARD' ? 'white' : 'black' }}>
-          Dashboard
-        </button>
+      <nav style={{ background: '#f0f0f0', padding: '10px', display: 'flex', gap: '10px' }}>
+        <button onClick={() => setCurrentView('TABLE_SELECTION')}>Mesas & PDV</button>
+        <button onClick={() => setCurrentView('DASHBOARD')}>Dashboard</button>
       </nav>
-      
-      {view === 'PDV' && <PdvAndKdsContainer />}
-      {view === 'DASHBOARD' && <DashboardComponent />}
+      {renderView()}
     </div>
   );
 }

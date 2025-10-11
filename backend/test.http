@@ -1,3 +1,23 @@
-###
-### Listar todos os produtos
-GET http://localhost:3333/products
+### Criar Mesa 01
+POST http://localhost:3333/tables
+Content-Type: application/json
+
+{
+  "name": "Mesa 01"
+}
+
+### Criar Mesa 02
+POST http://localhost:3333/tables
+Content-Type: application/json
+
+{
+  "name": "Mesa 02"
+}
+
+### Criar Mesa 03
+POST http://localhost:3333/tables
+Content-Type: application/json
+
+{
+  "name": "Mesa 03"
+}
