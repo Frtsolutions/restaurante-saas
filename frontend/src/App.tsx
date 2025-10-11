@@ -27,30 +27,52 @@ function App() {
     fetchProducts();
   }, []);
 
-  // ✨ LÓGICA ATUALIZADA AQUI ✨
   function addProductToOrder(productToAdd: Product) {
-    // Verifica se o produto já está na comanda
     const existingItem = orderItems.find(item => item.id === productToAdd.id);
 
     if (existingItem) {
-      // Se já existe, apenas aumenta a quantidade
       setOrderItems(orderItems.map(item => 
         item.id === productToAdd.id 
           ? { ...item, quantity: item.quantity + 1 }
           : item
       ));
     } else {
-      // Se é um item novo, adiciona à lista com quantidade 1
       setOrderItems([...orderItems, { ...productToAdd, quantity: 1 }]);
     }
   }
 
-  // ✨ NOVO: Função para calcular o total
   const calculateTotal = () => {
     return orderItems.reduce((total, item) => {
       return total + (parseFloat(item.price) * item.quantity);
-    }, 0).toFixed(2); // .toFixed(2) para formatar como dinheiro (ex: 15.50)
+    }, 0).toFixed(2);
   };
+
+  // ==================================================================
+  // ✨ NOSSA NOVA FUNÇÃO PARA FINALIZAR O PEDIDO
+  // ==================================================================
+  async function handleFinalizeOrder() {
+    // 1. Prepara os dados para enviar para a API.
+    //    A API espera um objeto com uma chave "items", que é uma lista.
+    //    Cada item na lista precisa ter apenas 'productId' e 'quantity'.
+    const payload = {
+      items: orderItems.map(item => ({
+        productId: item.id,
+        quantity: item.quantity,
+      })),
+    };
+
+    try {
+      // 2. Envia os dados para o backend usando o axios.
+      await axios.post('http://localhost:3333/orders', payload);
+
+      // 3. Se tudo deu certo, mostra um alerta de sucesso e limpa a comanda.
+      alert('Pedido finalizado com sucesso!');
+      setOrderItems([]); // Limpa o carrinho/comanda
+    } catch (error) {
+      console.error("Erro ao finalizar o pedido:", error);
+      alert('Houve um erro ao finalizar o pedido. Tente novamente.');
+    }
+  }
 
   return (
     <div style={{ display: 'flex', fontFamily: 'sans-serif' }}>
@@ -70,7 +92,6 @@ function App() {
         </ul>
       </div>
 
-      {/* ✨ SEÇÃO DA COMANDA ATUALIZADA ✨ */}
       <div style={{ width: '50%', padding: '10px', borderLeft: '2px solid #eee' }}>
         <h1>Comanda</h1>
         {orderItems.length === 0 ? (
@@ -89,6 +110,15 @@ function App() {
         )}
         <hr />
         <h2>Total: R$ {calculateTotal()}</h2>
+
+        {/* ✨ NOSSO NOVO BOTÃO ✨ */}
+        <button 
+          onClick={handleFinalizeOrder}
+          disabled={orderItems.length === 0} // Desabilita o botão se a comanda estiver vazia
+          style={{ width: '100%', padding: '15px', fontSize: '16px', backgroundColor: 'green', color: 'white', border: 'none', cursor: 'pointer' }}
+        >
+          Finalizar Pedido
+        </button>
       </div>
 
     </div>

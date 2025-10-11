@@ -1,22 +1,44 @@
-// Este é o arquivo de Schema do Prisma, a planta baixa do seu banco de dados.
-
-// Configura o cliente Prisma que será gerado para uso no seu código.
 generator client {
   provider = "prisma-client-js"
 }
 
-// Define a fonte de dados, ou seja, onde seu banco de dados está.
 datasource db {
-  provider = "postgresql" // Informa que estamos usando um banco de dados PostgreSQL.
-  url      = env("DATABASE_URL") // Diz ao Prisma para pegar a chave secreta do nosso arquivo .env
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String      @id @default(uuid())
+  name        String
+  price       Decimal
+  createdAt   DateTime    @default(now())
+  // ✨ NOVO: Adicionamos uma relação para saber em quais itens de pedido este produto aparece.
+  orderItems  OrderItem[]
 }
 
 // ==================================================================
-// NOSSO PRIMEIRO MODELO - A PLANTA DA NOSSA TABELA DE PRODUTOS
+// ✨ NOSSO NOVO MODELO DE PEDIDOS (ORDERS)
 // ==================================================================
-model Product {
-  id        String   @id @default(uuid()) // Campo de ID: será um texto único, gerado automaticamente.
-  name      String                         // Campo de nome: será um texto (obrigatório).
-  price     Decimal                        // Campo de preço: será um número decimal de alta precisão.
-  createdAt DateTime @default(now())        // Campo de data de criação: será preenchido automaticamente com a data e hora atuais.
+model Order {
+  id        String      @id @default(uuid())
+  total     Decimal     // O valor total do pedido.
+  createdAt DateTime    @default(now())
+  // Relação: Um pedido tem muitos itens de pedido.
+  items     OrderItem[]
+}
+
+// ==================================================================
+// ✨ NOSSO NOVO MODELO DE ITENS DO PEDIDO (ORDER ITEMS)
+// ==================================================================
+model OrderItem {
+  id        String  @id @default(uuid())
+  quantity  Int     // A quantidade deste item no pedido.
+
+  // Relação com o Pedido: a qual pedido este item pertence?
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+
+  // Relação com o Produto: qual produto é este item?
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
 }
