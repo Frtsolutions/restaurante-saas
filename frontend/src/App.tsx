@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// ✨ Importações do Mantine ✨
-import { AppShell, Group, Button, Title, Container } from '@mantine/core'; // Header removido, usamos AppShell.Header
+// ✨ Importações do Mantine (ADICIONADAS Tabs, TextInput, etc.) ✨
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper } from '@mantine/core';
+
 
 // ==================================================================
 // INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -12,7 +13,7 @@ interface Product { id: string; name: string; price: string; }
 interface OrderItem extends Product { quantity: number; }
 interface FullOrder { id: string; total: number; createdAt: string; items: { id: string; quantity: number; product: Product; }[]; }
 interface DashboardData { totalRevenue: number; orderCount: number; topProducts: { productId: string; name: string; quantitySold: number; }[]; }
-interface Table { id: string; name: string; }
+interface Table { id: string; name: string; } // Renomeado de Table para evitar conflito com Mantine
 interface Ingredient { id: string; name: string; stockQuantity: string; unit: string; }
 interface FinancialTransaction {
   id: string;
@@ -35,10 +36,10 @@ const socket = io('http://localhost:3333');
 // COMPONENTE PRINCIPAL APP
 // ==================================================================
 function App() {
-  // --- Estados --- (SEU CÓDIGO - SEM ALTERAÇÕES)
+  // --- Estados --- (Alterado tipo de managementSubView)
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
   const [products, setProducts] = useState<Product[]>([]);
-  const [tables, setTables] = useState<Table[]>([]);
+  const [tables, setTables] = useState<Table[]>([]); // Renomeado de Table para evitar conflito com Mantine
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [kdsOrders, setKdsOrders] = useState<FullOrder[]>([]);
@@ -47,7 +48,8 @@ function App() {
   const [newIngredientName, setNewIngredientName] = useState('');
   const [newIngredientQuantity, setNewIngredientQuantity] = useState('');
   const [newIngredientUnit, setNewIngredientUnit] = useState('un');
-  const [managementSubView, setManagementSubView] = useState('INSUMOS');
+  // ✨ Alterado para string | null para compatibilidade com Mantine Tabs ✨
+  const [managementSubView, setManagementSubView] = useState<string | null>('insumos');
   const [newProductName, setNewProductName] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([]);
@@ -101,7 +103,7 @@ function App() {
         .then(response => setTransactions(response.data))
         .catch(error => console.error("Erro ao buscar transações:", error));
     }
-  }, [currentView]); // Dependência ajustada para apenas currentView
+  }, [currentView]);
 
 
   // --- Funções --- (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -142,9 +144,10 @@ function App() {
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
 
-  // --- Renderização --- (SEU JSX COMPLETO - SEM ABREVIAÇÕES OU ALTERAÇÕES INTERNAS)
+  // --- Renderização --- (APENAS 'MANAGEMENT' FOI ALTERADO)
   const renderView = () => {
     switch (currentView) {
+      // TELA DE DASHBOARD (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
       case 'DASHBOARD':
         return (
           <div style={{ padding: '20px' }}>
@@ -165,42 +168,169 @@ function App() {
             </div>
           </div>
         );
+
+      // ✨ TELA DE GESTÃO REFATORADA COM MANTINE ✨
       case 'MANAGEMENT':
         return (
-          <div style={{ padding: '20px' }}>
-            <h1>Gestão</h1>
-            <nav style={{ marginBottom: '20px' }}><button onClick={() => setManagementSubView('INSUMOS')} style={{ padding: '10px', background: managementSubView === 'INSUMOS' ? 'lightblue' : 'white', border: '1px solid #ccc' }}>Gestão de Insumos</button><button onClick={() => setManagementSubView('PRODUTOS')} style={{ padding: '10px', background: managementSubView === 'PRODUTOS' ? 'lightblue' : 'white', border: '1px solid #ccc' }}>Gestão de Produtos</button></nav>
-            {managementSubView === 'INSUMOS' && (
-              <div>
-                <h2>Gestão de Estoque - Insumos</h2>
-                <form onSubmit={handleCreateIngredient} style={{ marginBottom: '30px', border: '1px solid #ccc', padding: '15px', borderRadius: '8px' }}><h2>Adicionar Novo Insumo</h2><input type="text" placeholder="Nome (ex: Pão Brioche)" value={newIngredientName} onChange={e => setNewIngredientName(e.target.value)} style={{ marginRight: '10px', padding: '8px' }} /><input type="number" step="0.01" placeholder="Qtd. Inicial" value={newIngredientQuantity} onChange={e => setNewIngredientQuantity(e.target.value)} style={{ marginRight: '10px', padding: '8px' }} /><select value={newIngredientUnit} onChange={e => setNewIngredientUnit(e.target.value)} style={{ marginRight: '10px', padding: '8px' }}><option value="un">Unidade (un)</option><option value="g">Grama (g)</option><option value="kg">Quilo (kg)</option><option value="ml">Mililitro (ml)</option><option value="l">Litro (l)</option></select><button type="submit" style={{ padding: '8px 12px', background: 'royalblue', color: 'white', border: 'none', borderRadius: '4px' }}>Adicionar</button></form>
-                <h2>Insumos em Estoque</h2>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f0f0f0' }}><th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'left' }}>Nome</th><th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'left' }}>Estoque Atual</th><th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'left' }}>Unidade</th></tr></thead><tbody>{ingredients.map(ing => (<tr key={ing.id}><td style={{ padding: '10px', border: '1px solid #ddd' }}>{ing.name}</td><td style={{ padding: '10px', border: '1px solid #ddd' }}>{parseFloat(ing.stockQuantity).toFixed(2)}</td><td style={{ padding: '10px', border: '1px solid #ddd' }}>{ing.unit}</td></tr>))}</tbody></table>
-              </div>
-            )}
-            {managementSubView === 'PRODUTOS' && (
-              <div>
-                <h2>Gestão de Produtos</h2>
-                <form onSubmit={handleCreateProduct} style={{ marginBottom: '30px', border: '1px solid #ccc', padding: '15px', borderRadius: '8px' }}>
-                  <h2>Adicionar Novo Produto</h2>
-                  <div style={{ marginBottom: '10px' }}><label>Nome do Produto: </label><input type="text" value={newProductName} onChange={e => setNewProductName(e.target.value)} style={{ padding: '8px', marginLeft: '5px' }} /></div>
-                  <div style={{ marginBottom: '20px' }}><label>Preço de Venda (R$): </label><input type="number" step="0.01" value={newProductPrice} onChange={e => setNewProductPrice(e.target.value)} style={{ padding: '8px', marginLeft: '5px' }} /></div>
-                  <h3>Ficha Técnica (Receita)</h3>
-                  <div style={{ background: '#f9f9f9', padding: '10px', border: '1px solid #eee', marginBottom: '10px' }}>
-                    <select value={selectedIngredientId} onChange={e => setSelectedIngredientId(e.target.value)} style={{ padding: '8px' }}>{ingredients.length === 0 && <option>Carregando...</option>}{ingredients.map(ing => <option key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</option>)}</select>
-                    <input type="number" step="0.01" placeholder="Quantidade" value={selectedIngredientQuantity} onChange={e => setSelectedIngredientQuantity(e.target.value)} style={{ margin: '0 10px', padding: '8px' }} />
-                    <button type="button" onClick={handleAddIngredientToRecipe} style={{ padding: '8px 12px', background: 'darkorange', color: 'white', border: 'none', borderRadius: '4px' }}>Adicionar Ingrediente</button>
-                  </div>
-                  <ul>{recipeItems.map((item, index) => <li key={index}>{item.name} - {item.quantity} {ingredients.find(ing => ing.id === item.ingredientId)?.unit}</li>)}</ul>
-                  <hr />
-                  <button type="submit" style={{ padding: '10px 15px', background: 'green', color: 'white', border: 'none', borderRadius: '4px' }}>Salvar Novo Produto</button>
-                </form>
-                <h2>Produtos Cadastrados</h2>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr style={{ background: '#f0f0f0' }}><th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'left' }}>Nome</th><th style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'left' }}>Preço (R$)</th></tr></thead><tbody>{products.map(p => (<tr key={p.id}><td style={{ padding: '10px', border: '1px solid #ddd' }}>{p.name}</td><td style={{ padding: '10px', border: '1px solid #ddd' }}>{parseFloat(p.price).toFixed(2)}</td></tr>))}</tbody></table>
-              </div>
-            )}
-          </div>
+          // Usando Container do Mantine para centralizar e limitar largura
+          <Container size="lg" mt="md">
+            <Title order={1} mb="xl">Gestão</Title>
+
+            {/* Sistema de Abas do Mantine */}
+            <Tabs value={managementSubView} onChange={setManagementSubView}>
+              <Tabs.List grow> {/* Faz as abas ocuparem o espaço disponível */}
+                <Tabs.Tab value="insumos">Gestão de Insumos</Tabs.Tab>
+                <Tabs.Tab value="produtos">Gestão de Produtos</Tabs.Tab>
+              </Tabs.List>
+
+              {/* Painel da Aba Insumos */}
+              <Tabs.Panel value="insumos" pt="lg">
+                <Title order={2} mb="lg">Gestão de Estoque - Insumos</Title>
+                {/* Formulário dentro de um Paper (cartão) */}
+                <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateIngredient}>
+                  <Title order={3} mb="md">Adicionar Novo Insumo</Title>
+                  <Stack> {/* Empilha os inputs verticalmente */}
+                    <TextInput
+                      label="Nome do Insumo"
+                      placeholder="Ex: Pão Brioche"
+                      value={newIngredientName}
+                      onChange={(event) => setNewIngredientName(event.currentTarget.value)}
+                      required
+                    />
+                    <Group grow> {/* Coloca Quantidade e Unidade lado a lado */}
+                      <NumberInput
+                        label="Quantidade Inicial"
+                        placeholder="Ex: 100"
+                        value={newIngredientQuantity}
+                        onChange={(value) => setNewIngredientQuantity(String(value))} // onChange retorna string ou number
+                        min={0}
+                        step={0.01}
+                        decimalScale={2} // Permite até 2 casas decimais
+                        required
+                      />
+                      <Select
+                        label="Unidade"
+                        value={newIngredientUnit}
+                        onChange={(value) => setNewIngredientUnit(value || 'un')}
+                        data={[
+                          { value: 'un', label: 'Unidade (un)' },
+                          { value: 'g', label: 'Grama (g)' },
+                          { value: 'kg', label: 'Quilo (kg)' },
+                          { value: 'ml', label: 'Mililitro (ml)' },
+                          { value: 'l', label: 'Litro (l)' },
+                        ]}
+                        required
+                        allowDeselect={false} // Evita que fique sem seleção
+                      />
+                    </Group>
+                    <Button type="submit" mt="md">Adicionar Insumo</Button>
+                  </Stack>
+                </Paper>
+
+                {/* Tabela Mantine */}
+                <Title order={2} mb="md">Insumos em Estoque</Title>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Nome</Table.Th>
+                      <Table.Th>Estoque Atual</Table.Th>
+                      <Table.Th>Unidade</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {ingredients.map(ing => (
+                      <Table.Tr key={ing.id}>
+                        <Table.Td>{ing.name}</Table.Td>
+                        {/* Garante que stockQuantity seja tratado como número */}
+                        <Table.Td>{parseFloat(String(ing.stockQuantity) || '0').toFixed(2)}</Table.Td>
+                        <Table.Td>{ing.unit}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Tabs.Panel>
+
+              {/* Painel da Aba Produtos */}
+              <Tabs.Panel value="produtos" pt="lg">
+                <Title order={2} mb="lg">Gestão de Produtos</Title>
+                {/* Formulário dentro de um Paper */}
+                <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateProduct}>
+                   <Title order={3} mb="md">Adicionar Novo Produto</Title>
+                   <Stack>
+                     <TextInput
+                       label="Nome do Produto"
+                       value={newProductName}
+                       onChange={(event) => setNewProductName(event.currentTarget.value)}
+                       required
+                     />
+                     <NumberInput
+                       label="Preço de Venda (R$)"
+                       value={newProductPrice}
+                       onChange={(value) => setNewProductPrice(String(value))}
+                       min={0}
+                       step={0.01}
+                       decimalScale={2} // Garante 2 casas decimais
+                       required
+                       prefix="R$ " // Adiciona prefixo de moeda
+                     />
+                     <Title order={4} mt="md">Ficha Técnica (Receita)</Title>
+                     {/* Seção para adicionar ingredientes à receita */}
+                     <Paper p="sm" withBorder style={{ background: '#f9f9f9' }}>
+                       <Group grow align='flex-end'> {/* Alinha itens na base */}
+                         <Select
+                           label="Ingrediente"
+                           placeholder="Selecione..."
+                           value={selectedIngredientId}
+                           onChange={(value) => setSelectedIngredientId(value || '')}
+                           data={ingredients.map(ing => ({ value: ing.id, label: `${ing.name} (${ing.unit})` }))}
+                           searchable
+                           clearable // Permite limpar a seleção
+                           nothingFoundMessage="Nenhum ingrediente encontrado"
+                         />
+                         <NumberInput
+                           label="Quantidade"
+                           value={selectedIngredientQuantity}
+                           onChange={(value) => setSelectedIngredientQuantity(String(value))}
+                           min={0}
+                           step={0.01}
+                           decimalScale={2}
+                         />
+                         <Button onClick={handleAddIngredientToRecipe} variant="outline">Adicionar</Button>
+                       </Group>
+                     </Paper>
+                     {/* Lista de ingredientes já adicionados */}
+                     <Paper p="xs" mt="xs">
+                        {recipeItems.length === 0 && <span style={{color: 'grey'}}>Nenhum ingrediente adicionado</span>}
+                        <ul>{recipeItems.map((item, index) => <li key={index}>{item.name} - {item.quantity} {ingredients.find(ing => ing.id === item.ingredientId)?.unit}</li>)}</ul>
+                     </Paper>
+                     <Button type="submit" mt="md" color="green">Salvar Novo Produto</Button>
+                   </Stack>
+                </Paper>
+
+                {/* Tabela Mantine */}
+                <Title order={2} mb="md">Produtos Cadastrados</Title>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Nome</Table.Th>
+                      <Table.Th>Preço (R$)</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {products.map(p => (
+                      <Table.Tr key={p.id}>
+                        <Table.Td>{p.name}</Table.Td>
+                        <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Tabs.Panel>
+            </Tabs>
+          </Container>
         );
+
+      // TELA FINANCEIRA (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
       case 'FINANCIAL':
         return (
           <div style={{ padding: '20px' }}>
@@ -220,6 +350,8 @@ function App() {
             </table>
           </div>
         );
+
+      // TELA DE COMANDA (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
       case 'ORDER':
         return (
             <div style={{ padding: '10px' }}>
@@ -240,6 +372,8 @@ function App() {
                 </div>
             </div>
         );
+
+      // TELA DE MESAS & KDS (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
       case 'TABLE_SELECTION':
       default:
         return (
@@ -268,48 +402,22 @@ function App() {
     }
   };
 
- // --- ✨ ESTRUTURA PRINCIPAL COM APPSHELL ✨ ---
- // Removida a <div> externa e a <nav> interna, substituídas pelo AppShell
- return (
-    <AppShell
-      padding="md"
-      header={{ height: 60 }}
-    >
+  // --- ESTRUTURA PRINCIPAL COM APPSHELL --- (Sem alterações)
+  return (
+    <AppShell padding="md" header={{ height: 60 }}>
       <AppShell.Header>
         <Group h="100%" px="md">
           <Title order={3}>Meu PDV</Title>
           <Group justify="flex-end" style={{ flex: 1 }}>
-            <Button
-              variant={currentView.includes('TABLE') || currentView.includes('ORDER') ? 'filled' : 'subtle'}
-              onClick={() => setCurrentView('TABLE_SELECTION')}
-            >
-              Mesas & PDV
-            </Button>
-            <Button
-              variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'}
-              onClick={() => setCurrentView('DASHBOARD')}
-            >
-              Dashboard
-            </Button>
-            <Button
-              variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'}
-              onClick={() => setCurrentView('MANAGEMENT')}
-            >
-              Gestão
-            </Button>
-            <Button
-              variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'}
-              onClick={() => setCurrentView('FINANCIAL')}
-            >
-              Financeiro
-            </Button>
+            <Button variant={currentView.includes('TABLE') || currentView.includes('ORDER') ? 'filled' : 'subtle'} onClick={() => setCurrentView('TABLE_SELECTION')}>Mesas & PDV</Button>
+            <Button variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dashboard</Button>
+            <Button variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
+            <Button variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Financeiro</Button>
           </Group>
         </Group>
       </AppShell.Header>
-
       <AppShell.Main>
         <Container size="xl">
-          {/* SEU JSX COMPLETO É RENDERIZADO AQUI */}
           {renderView()}
         </Container>
       </AppShell.Main>
