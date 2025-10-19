@@ -7,35 +7,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ✨ NOVO MODELO PARA INSUMOS / INGREDIENTES ✨
 model Ingredient {
   id            String       @id @default(uuid())
   name          String       @unique
-  stockQuantity Decimal      // Quantidade em estoque
-  unit          String       // Unidade de medida (ex: 'un', 'g', 'kg', 'ml', 'l')
-  recipeItems   RecipeItem[] // Relação: pode estar em várias receitas
+  stockQuantity Decimal
+  unit          String
+  recipeItems   RecipeItem[]
 }
 
-// ✨ NOVO MODELO PARA O ITEM DA RECEITA (FICHA TÉCNICA) ✨
-// Esta é uma "tabela de junção" que conecta Produtos e Ingredientes.
 model RecipeItem {
   id           String     @id @default(uuid())
-  quantity     Decimal    // Quantidade do ingrediente necessária para o produto
-
+  quantity     Decimal
   productId    String
   product      Product    @relation(fields: [productId], references: [id])
-
   ingredientId String
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
 }
 
 model Product {
   id          String       @id @default(uuid())
-  name        String
+  name        String       @unique // Adicionei @unique aqui, é uma boa prática
   price       Decimal
   createdAt   DateTime     @default(now())
   orderItems  OrderItem[]
-  recipeItems RecipeItem[] // Relação: um produto pode ter vários itens na sua receita
+  recipeItems RecipeItem[]
 }
 
 model Table {
@@ -60,4 +55,17 @@ model OrderItem {
   order     Order   @relation(fields: [orderId], references: [id])
   productId String
   product   Product @relation(fields: [productId], references: [id])
+}
+
+// ==================================================================
+// ✨ NOSSO NOVO MODELO FINANCEIRO
+// ==================================================================
+model FinancialTransaction {
+  id          String    @id @default(uuid())
+  description String    // Ex: "Aluguel", "Fornecedor de Bebidas"
+  amount      Decimal   // O valor da transação
+  type        String    // 'DESPESA' (Expense) ou 'RECEITA' (Revenue)
+  dueDate     DateTime? // Data de vencimento (para contas a pagar)
+  paidAt      DateTime? // Data que foi paga (para conciliação)
+  createdAt   DateTime  @default(now())
 }

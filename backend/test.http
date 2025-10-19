@@ -1,83 +1,23 @@
-### 1. CADASTRAR NOSSOS INGREDIENTES / INSUMOS
-POST http://localhost:3333/ingredients
+### 1. CADASTRAR UMA CONTA DE LUZ
+POST http://localhost:3333/financial/transactions
 Content-Type: application/json
 
 {
-  "name": "Pão de Hambúrguer",
-  "stockQuantity": 100,
-  "unit": "un"
+  "description": "Conta de Luz - Outubro",
+  "amount": 450.75,
+  "type": "DESPESA",
+  "dueDate": "2025-10-25T00:00:00Z"
 }
 
-###
-POST http://localhost:3333/ingredients
+### 2. CADASTRAR UMA CONTA DE ALUGUEL
+POST http://localhost:3333/financial/transactions
 Content-Type: application/json
 
 {
-  "name": "Carne de Hambúrguer",
-  "stockQuantity": 50,
-  "unit": "un"
+  "description": "Aluguel - Outubro",
+  "amount": 2500.00,
+  "type": "DESPESA"
 }
 
-###
-POST http://localhost:3333/ingredients
-Content-Type: application/json
-
-{
-  "name": "Queijo Cheddar",
-  "stockQuantity": 80,
-  "unit": "fatias"
-}
-
-###
-# Cadastrar um produto que é o próprio insumo (sem ficha técnica)
-POST http://localhost:3333/ingredients
-Content-Type: application/json
-
-{
-  "name": "Coca-Cola Lata",
-  "stockQuantity": 48,
-  "unit": "un"
-}
-
-### 2. VERIFICAR OS INGREDIENTES CRIADOS E COPIAR OS IDs
-GET http://localhost:3333/ingredients
-
-### 3. CADASTRAR UM PRODUTO COM FICHA TÉCNICA (X-BURGER)
-# ATENÇÃO: Substitua os "ID_DO_INGREDIENTE" pelos IDs reais que você copiou do passo 2.
-POST http://localhost:3333/products
-Content-Type: application/json
-
-{
-  "name": "X-Burger Cheddar",
-  "price": 25.50,
-  "recipeItems": [
-    { "ingredientId": "f6259b67-a47b-4da5-b1e7-c2cf0b8c8472", "quantity": 1 },
-    { "ingredientId": "6bed49e4-8342-4ce8-b48d-4c99cd7321a5", "quantity": 1 },
-    { "ingredientId": "b5bf176d-c056-4560-b44f-c1869ea4c314", "quantity": 1 }
-  ]
-}
-
-### 4. CADASTRAR UM PRODUTO SEM FICHA TÉCNICA
-POST http://localhost:3333/products
-Content-Type: application/json
-
-{
-    "name": "Coca-Cola Lata",
-    "price": 5.00
-}
-
-### 5. FINALIZAR UM PEDIDO COM 2 X-BURGERS E 1 COCA-COLA
-# ATENÇÃO: Substitua os "ID_DO_PRODUTO" pelos IDs dos produtos criados nos passos 3 e 4.
-POST http://localhost:3333/orders
-Content-Type: application/json
-
-{
-  "items": [
-    { "productId": "ID_DO_XBURGER", "quantity": 2 },
-    { "productId": "ID_DA_COCA", "quantity": 1 }
-  ]
-}
-
-### 6. VERIFICAR O ESTOQUE FINAL
-# Execute este GET APÓS finalizar o pedido
-GET http://localhost:3333/ingredients
+### 3. LISTAR TODAS AS TRANSAÇÕES FINANCEIRAS
+GET http://localhost:3333/financial/transactions

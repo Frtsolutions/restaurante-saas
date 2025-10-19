@@ -20,22 +20,16 @@ const port = 3333;
 // ==================================================================
 // ROTAS DE INGREDIENTES / INSUMOS
 // ==================================================================
-// Rota para LISTAR todos os ingredientes
 app.get('/ingredients', async (request, response) => {
   const ingredients = await prisma.ingredient.findMany({ orderBy: { name: 'asc' } });
   return response.json(ingredients);
 });
 
-// Rota para CRIAR um novo ingrediente
 app.post('/ingredients', async (request, response) => {
   const { name, stockQuantity, unit } = request.body;
   try {
     const ingredient = await prisma.ingredient.create({
-      data: {
-        name,
-        stockQuantity: new Decimal(stockQuantity),
-        unit
-      }
+      data: { name, stockQuantity: new Decimal(stockQuantity), unit }
     });
     return response.status(201).json(ingredient);
   } catch (error) {
@@ -46,18 +40,13 @@ app.post('/ingredients', async (request, response) => {
 // ==================================================================
 // ROTAS DE PRODUTOS
 // ==================================================================
-// Rota para LISTAR todos os produtos
 app.get('/products', async (request, response) => {
-  const products = await prisma.product.findMany({
-    orderBy: { name: 'asc' }
-  });
+  const products = await prisma.product.findMany({ orderBy: { name: 'asc' } });
   return response.status(200).json(products);
 });
 
-// Rota para CRIAR um novo produto (agora com Ficha Técnica/Receita)
 app.post('/products', async (request, response) => {
-  const { name, price, recipeItems } = request.body; // recipeItems: { ingredientId: string, quantity: number }[]
-
+  const { name, price, recipeItems } = request.body;
   try {
     const product = await prisma.product.create({
       data: {
@@ -80,21 +69,15 @@ app.post('/products', async (request, response) => {
 // ==================================================================
 // ROTAS DE MESAS
 // ==================================================================
-// Rota para LISTAR todas as mesas
 app.get('/tables', async (request, response) => {
-  const tables = await prisma.table.findMany({
-    orderBy: { name: 'asc' }
-  });
+  const tables = await prisma.table.findMany({ orderBy: { name: 'asc' } });
   return response.status(200).json(tables);
 });
 
-// Rota para CRIAR uma nova mesa
 app.post('/tables', async (request, response) => {
   const { name } = request.body;
   try {
-    const table = await prisma.table.create({
-      data: { name }
-    });
+    const table = await prisma.table.create({ data: { name } });
     return response.status(201).json(table);
   } catch (error) {
     return response.status(409).json({ message: "Table name already exists." });
@@ -109,33 +92,24 @@ type OrderItemInput = { productId: string; quantity: number; }
 app.post('/orders', async (request, response) => {
   const { items, tableId } = request.body as { items: OrderItemInput[], tableId?: string };
 
-  // Busca os produtos do pedido, já incluindo suas receitas
   const productIds = items.map(item => item.productId);
   const productsInDb = await prisma.product.findMany({
     where: { id: { in: productIds } },
     include: { recipeItems: true }
   });
 
-  // Prepara as operações de atualização de estoque
   const stockUpdates: any[] = [];
   for (const item of items) {
     const product = productsInDb.find(p => p.id === item.productId);
-    if (!product) continue; // Pula se o produto não for encontrado
-
+    if (!product) continue;
     if (product.recipeItems.length > 0) {
-      // Caso 1: Produto tem receita, dá baixa nos ingredientes
       for (const recipeItem of product.recipeItems) {
         stockUpdates.push(prisma.ingredient.update({
           where: { id: recipeItem.ingredientId },
-          data: {
-            stockQuantity: {
-              decrement: new Decimal(recipeItem.quantity).mul(item.quantity)
-            }
-          }
+          data: { stockQuantity: { decrement: new Decimal(recipeItem.quantity).mul(item.quantity) } }
         }));
       }
     } else {
-      // Caso 2: Produto não tem receita (ex: bebida), procura um insumo com o mesmo nome
       const ingredientAsProduct = await prisma.ingredient.findFirst({ where: { name: product.name }});
       if(ingredientAsProduct) {
         stockUpdates.push(prisma.ingredient.update({
@@ -146,14 +120,12 @@ app.post('/orders', async (request, response) => {
     }
   }
   
-  // Calcula o total do pedido no backend para segurança
   const total = productsInDb.reduce((acc, product) => {
     const orderItem = items.find(item => item.productId === product.id);
     const itemQuantity = orderItem ? orderItem.quantity : 0;
     return acc + (Number(product.price) * itemQuantity);
   }, 0);
   
-  // Executa a criação do pedido e a baixa de estoque em uma única transação
   try {
     const [createdOrder] = await prisma.$transaction([
       prisma.order.create({
@@ -166,12 +138,43 @@ app.post('/orders', async (request, response) => {
       }),
       ...stockUpdates
     ]);
-
     io.emit('new_order', createdOrder);
     return response.status(201).json(createdOrder);
   } catch (error) {
     console.error("Transaction failed: ", error);
     return response.status(500).json({ message: "Failed to process order and update stock." });
+  }
+});
+
+// ==================================================================
+// ✨ NOVAS ROTAS PARA O FINANCEIRO
+// ==================================================================
+// Rota para LISTAR todas as transações financeiras
+app.get('/financial/transactions', async (request, response) => {
+  const transactions = await prisma.financialTransaction.findMany({
+    orderBy: {
+      createdAt: 'desc'
+    }
+  });
+  return response.status(200).json(transactions);
+});
+
+// Rota para CRIAR uma nova transação (despesa ou receita manual)
+app.post('/financial/transactions', async (request, response) => {
+  const { description, amount, type, dueDate } = request.body;
+  try {
+    const transaction = await prisma.financialTransaction.create({
+      data: {
+        description,
+        amount: new Decimal(amount),
+        type, // Deve ser 'DESPESA' ou 'RECEITA'
+        dueDate: dueDate ? new Date(dueDate) : null
+      }
+    });
+    return response.status(201).json(transaction);
+  } catch (error) {
+    console.error("Failed to create transaction: ", error);
+    return response.status(500).json({ message: "Failed to create transaction." });
   }
 });
 
@@ -213,7 +216,6 @@ app.get('/dashboard/today', async (request, response) => {
         orderCount: salesData._count.id || 0,
         topProducts: topProducts
     };
-
     return response.status(200).json(dashboardData);
 });
 
