@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// ✨ Importações do Mantine CORRIGIDAS ✨
-import { AppShell, Group, Button, Title, Container } from '@mantine/core'; // Header removido daqui
+// ✨ Importações do Mantine ✨
+import { AppShell, Group, Button, Title, Container } from '@mantine/core'; // Header removido, usamos AppShell.Header
 
 // ==================================================================
 // INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -80,9 +80,11 @@ function App() {
       axios.get('http://localhost:3333/ingredients')
         .then(response => {
           setIngredients(response.data);
-          if (response.data.length > 0 && !selectedIngredientId) {
-            setSelectedIngredientId(response.data[0].id);
-          }
+          // Define um valor padrão para o dropdown de ingredientes, se ele estiver vazio
+          // e nenhum já estiver selecionado (evita resetar seleção)
+          if(response.data.length > 0 && !selectedIngredientId) {
+             setSelectedIngredientId(response.data[0].id);
+           }
         })
         .catch(error => console.error("Erro ao buscar ingredientes:", error));
       axios.get('http://localhost:3333/products')
@@ -99,7 +101,7 @@ function App() {
         .then(response => setTransactions(response.data))
         .catch(error => console.error("Erro ao buscar transações:", error));
     }
-  }, [currentView]);
+  }, [currentView]); // Dependência ajustada para apenas currentView
 
 
   // --- Funções --- (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -266,9 +268,9 @@ function App() {
     }
   };
 
-  // --- ✨ ESTRUTURA PRINCIPAL COM APPSHELL ✨ ---
-  // A <nav> antiga foi removida daqui e substituída pelo AppShell.Header abaixo
-  return (
+ // --- ✨ ESTRUTURA PRINCIPAL COM APPSHELL ✨ ---
+ // Removida a <div> externa e a <nav> interna, substituídas pelo AppShell
+ return (
     <AppShell
       padding="md"
       header={{ height: 60 }}
