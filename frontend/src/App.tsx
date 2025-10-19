@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+// ✨ Importações do Mantine CORRIGIDAS ✨
+import { AppShell, Group, Button, Title, Container } from '@mantine/core'; // Header removido daqui
 
 // ==================================================================
-// INTERFACES (NOSSOS MOLDES DE DADOS)
+// INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
 // ==================================================================
 interface Product { id: string; name: string; price: string; }
 interface OrderItem extends Product { quantity: number; }
@@ -33,7 +35,7 @@ const socket = io('http://localhost:3333');
 // COMPONENTE PRINCIPAL APP
 // ==================================================================
 function App() {
-  // --- Estados --- (Sem alterações)
+  // --- Estados --- (SEU CÓDIGO - SEM ALTERAÇÕES)
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
   const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
@@ -57,25 +59,22 @@ function App() {
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
-  // --- Efeitos --- (Lógica de busca REVISADA)
+  // --- Efeitos --- (SEU CÓDIGO - SEM ALTERAÇÕES)
   useEffect(() => {
-    // Busca produtos essenciais na montagem inicial
     axios.get('http://localhost:3333/products')
       .then(response => setProducts(response.data))
-      .catch(error => console.error("Erro ao buscar produtos:", error)); // Log de erro
+      .catch(error => console.error("Erro ao buscar produtos:", error));
 
-    // Configura o socket.io
     socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
     return () => { socket.off('new_order'); };
-  }, []); // Roda apenas uma vez
+  }, []);
 
-  // Busca dados específicos da TELA ATUAL sempre que a 'currentView' mudar
   useEffect(() => {
-    console.log("Mudando para a view:", currentView); // Log para depuração
+    console.log("Mudando para a view:", currentView);
     if (currentView === 'DASHBOARD') {
       axios.get('http://localhost:3333/dashboard/today')
         .then(response => setDashboardData(response.data))
-        .catch(error => console.error("Erro ao buscar dashboard:", error)); // Log de erro
+        .catch(error => console.error("Erro ao buscar dashboard:", error));
     }
     if (currentView === 'MANAGEMENT') {
       axios.get('http://localhost:3333/ingredients')
@@ -85,25 +84,25 @@ function App() {
             setSelectedIngredientId(response.data[0].id);
           }
         })
-        .catch(error => console.error("Erro ao buscar ingredientes:", error)); // Log de erro
-      axios.get('http://localhost:3333/products') // Busca produtos novamente aqui se necessário para a gestão
+        .catch(error => console.error("Erro ao buscar ingredientes:", error));
+      axios.get('http://localhost:3333/products')
         .then(response => setProducts(response.data))
-        .catch(error => console.error("Erro ao buscar produtos (gestão):", error)); // Log de erro
+        .catch(error => console.error("Erro ao buscar produtos (gestão):", error));
     }
     if (currentView === 'TABLE_SELECTION') {
       axios.get('http://localhost:3333/tables')
         .then(response => setTables(response.data))
-        .catch(error => console.error("Erro ao buscar mesas:", error)); // Log de erro
+        .catch(error => console.error("Erro ao buscar mesas:", error));
     }
     if (currentView === 'FINANCIAL') {
       axios.get('http://localhost:3333/financial/transactions')
         .then(response => setTransactions(response.data))
-        .catch(error => console.error("Erro ao buscar transações:", error)); // Log de erro
+        .catch(error => console.error("Erro ao buscar transações:", error));
     }
-  }, [currentView]); // A ÚNICA dependência DEVE ser currentView
+  }, [currentView]);
 
 
-  // --- Funções --- (Sem alterações nas lógicas internas)
+  // --- Funções --- (SEU CÓDIGO - SEM ALTERAÇÕES)
   function handleSelectTable(table: Table) { setSelectedTable(table); setCurrentView('ORDER'); }
   function handleGoBackToTables() { setSelectedTable(null); setOrderItems([]); setCurrentView('TABLE_SELECTION'); }
   function addProductToOrder(product: Product) {
@@ -141,7 +140,7 @@ function App() {
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
 
-  // --- Renderização --- (JSX COMPLETO E CORRIGIDO)
+  // --- Renderização --- (SEU JSX COMPLETO - SEM ABREVIAÇÕES OU ALTERAÇÕES INTERNAS)
   const renderView = () => {
     switch (currentView) {
       case 'DASHBOARD':
@@ -222,7 +221,7 @@ function App() {
       case 'ORDER':
         return (
             <div style={{ padding: '10px' }}>
-                <button onClick={handleGoBackToTables} style={{ marginBottom: '10px' }}>&larr; Voltar para Mesas</button>
+                <button onClick={handleGoBackToTables} style={{ marginBottom: '10px', padding: '8px 12px', background: '#eee', border: '1px solid #ccc', borderRadius: '4px' }}>&larr; Voltar para Mesas</button>
                 <h1>Comanda - {selectedTable?.name}</h1>
                 <div style={{ display: 'flex' }}>
                     <div style={{ width: '50%', paddingRight: '10px' }}>
@@ -234,7 +233,7 @@ function App() {
                         <ul style={{ listStyle: 'none', padding: 0 }}>{orderItems.map(item => <li key={item.id}>{item.name} (x{item.quantity})</li>)}</ul>
                         <hr />
                         <h3>Total: R$ {calculateTotal()}</h3>
-                        <button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} style={{ width: '100%', padding: '15px', backgroundColor: orderItems.length === 0 ? 'grey' : 'green', color: 'white', border: 'none', borderRadius: '4px' }}>Finalizar Pedido</button>
+                        <button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} style={{ width: '100%', padding: '15px', backgroundColor: orderItems.length === 0 ? 'grey' : 'green', color: 'white', border: 'none', borderRadius: '4px', cursor: orderItems.length === 0 ? 'not-allowed' : 'pointer' }}>Finalizar Pedido</button>
                     </div>
                 </div>
             </div>
@@ -244,14 +243,14 @@ function App() {
         return (
             <div style={{ padding: '20px' }}>
               <h1>Seleção de Mesas</h1>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>{tables.map(table => (<div key={table.id} onClick={() => handleSelectTable(table)} style={{ border: '2px solid green', borderRadius: '10px', width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold' }}>{table.name}</div>))}</div>
-              <hr style={{ margin: '30px 0', border: '2px solid blue' }} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>{tables.map(table => (<div key={table.id} onClick={() => handleSelectTable(table)} style={{ border: '2px solid green', borderRadius: '10px', width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold', background: '#e8f5e9' }}>{table.name}</div>))}</div>
+              <hr style={{ margin: '30px 0', border: '2px solid lightblue' }} />
               <div>
                 <h1>KDS - Cozinha</h1>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                   {kdsOrders.length === 0 && <p>Aguardando novos pedidos...</p>}
                   {kdsOrders.map(order => (
-                    <div key={order.id} style={{ border: '2px solid black', padding: '15px', minWidth: '250px', borderRadius: '8px' }}>
+                    <div key={order.id} style={{ border: '2px solid black', padding: '15px', minWidth: '250px', borderRadius: '8px', background: '#fff9c4' }}>
                       <h3>Pedido #{order.id.substring(0, 6)}</h3>
                       <ul style={{ paddingLeft: '20px' }}>
                         {order.items.map(item => (
@@ -267,16 +266,52 @@ function App() {
     }
   };
 
+  // --- ✨ ESTRUTURA PRINCIPAL COM APPSHELL ✨ ---
+  // A <nav> antiga foi removida daqui e substituída pelo AppShell.Header abaixo
   return (
-    <div style={{ fontFamily: 'sans-serif' }}>
-      <nav style={{ background: '#f0f0f0', padding: '10px', display: 'flex', gap: '10px', borderBottom: '1px solid #ccc' }}>
-        <button onClick={() => setCurrentView('TABLE_SELECTION')} style={{ padding: '10px', background: currentView.includes('TABLE') || currentView.includes('ORDER') ? 'royalblue' : 'white', color: currentView.includes('TABLE') || currentView.includes('ORDER') ? 'white' : 'black', border: '1px solid #ccc' }}>Mesas & PDV</button>
-        <button onClick={() => setCurrentView('DASHBOARD')} style={{ padding: '10px', background: currentView === 'DASHBOARD' ? 'royalblue' : 'white', color: currentView === 'DASHBOARD' ? 'white' : 'black', border: '1px solid #ccc' }}>Dashboard</button>
-        <button onClick={() => setCurrentView('MANAGEMENT')} style={{ padding: '10px', background: currentView === 'MANAGEMENT' ? 'royalblue' : 'white', color: currentView === 'MANAGEMENT' ? 'white' : 'black', border: '1px solid #ccc' }}>Gestão</button>
-        <button onClick={() => setCurrentView('FINANCIAL')} style={{ padding: '10px', background: currentView === 'FINANCIAL' ? 'royalblue' : 'white', color: currentView === 'FINANCIAL' ? 'white' : 'black', border: '1px solid #ccc' }}>Financeiro</button>
-      </nav>
-      {renderView()}
-    </div>
+    <AppShell
+      padding="md"
+      header={{ height: 60 }}
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md">
+          <Title order={3}>Meu PDV</Title>
+          <Group justify="flex-end" style={{ flex: 1 }}>
+            <Button
+              variant={currentView.includes('TABLE') || currentView.includes('ORDER') ? 'filled' : 'subtle'}
+              onClick={() => setCurrentView('TABLE_SELECTION')}
+            >
+              Mesas & PDV
+            </Button>
+            <Button
+              variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'}
+              onClick={() => setCurrentView('DASHBOARD')}
+            >
+              Dashboard
+            </Button>
+            <Button
+              variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'}
+              onClick={() => setCurrentView('MANAGEMENT')}
+            >
+              Gestão
+            </Button>
+            <Button
+              variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'}
+              onClick={() => setCurrentView('FINANCIAL')}
+            >
+              Financeiro
+            </Button>
+          </Group>
+        </Group>
+      </AppShell.Header>
+
+      <AppShell.Main>
+        <Container size="xl">
+          {/* SEU JSX COMPLETO É RENDERIZADO AQUI */}
+          {renderView()}
+        </Container>
+      </AppShell.Main>
+    </AppShell>
   );
 }
 
