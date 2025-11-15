@@ -8,34 +8,61 @@ datasource db {
 }
 
 // ==================================================================
-// ✨ NOVOS MODELOS DE AUTENTICAÇÃO ✨
+// ✨ NOVO MODELO 'COMPANY' (TENANT) ✨
+// Esta é a tabela principal que representa cada cliente (restaurante).
 // ==================================================================
+model Company {
+  id    String @id @default(uuid())
+  name  String // Nome do restaurante (ex: "Pizzaria do Zé")
+
+  // Relações (Uma empresa tem...):
+  users         User[]
+  products      Product[]
+  ingredients   Ingredient[]
+  tables        Table[]
+  orders        Order[]
+  transactions  FinancialTransaction[]
+}
+
+// ==================================================================
+// MODELOS EXISTENTES (AGORA LIGADOS A UMA 'COMPANY')
+// ==================================================================
+
 enum Role {
-  DONO  // Administrador, pode ver tudo
-  CAIXA // Operador, pode apenas fazer vendas
+  DONO
+  CAIXA
 }
 
 model User {
   id           String   @id @default(uuid())
-  email        String   @unique // Usaremos o email como login
+  email        String   @unique
   name         String
-  passwordHash String   // NUNCA guardamos a senha, apenas o hash dela
+  passwordHash String
   role         Role     @default(CAIXA)
   createdAt    DateTime @default(now())
+  orders       Order[]
 
-  // Relação: Um usuário pode ter criado vários pedidos
-  orders Order[]
+  // ✨ ATUALIZADO: O usuário agora pertence a UMA empresa ✨
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // Garante que o email seja único *dentro* de uma mesma empresa
+  @@unique([email, companyId])
 }
 
-// ==================================================================
-// MODELOS EXISTENTES (COM ATUALIZAÇÃO NO ORDER)
-// ==================================================================
 model Ingredient {
   id            String       @id @default(uuid())
-  name          String       @unique
+  name          String
   stockQuantity Decimal
   unit          String
   recipeItems   RecipeItem[]
+
+  // ✨ ATUALIZADO: O ingrediente pertence a UMA empresa ✨
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // Garante que o nome do ingrediente seja único *dentro* da mesma empresa
+  @@unique([name, companyId])
 }
 
 model RecipeItem {
@@ -49,17 +76,31 @@ model RecipeItem {
 
 model Product {
   id          String       @id @default(uuid())
-  name        String       @unique
+  name        String
   price       Decimal
   createdAt   DateTime     @default(now())
   orderItems  OrderItem[]
   recipeItems RecipeItem[]
+
+  // ✨ ATUALIZADO: O produto pertence a UMA empresa ✨
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  
+  // Garante que o nome do produto seja único *dentro* da mesma empresa
+  @@unique([name, companyId])
 }
 
 model Table {
   id     String  @id @default(uuid())
-  name   String  @unique
+  name   String
   orders Order[]
+
+  // ✨ ATUALIZADO: A mesa pertence a UMA empresa ✨
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  // Garante que o nome da mesa seja único *dentro* da mesma empresa
+  @@unique([name, companyId])
 }
 
 model Order {
@@ -69,19 +110,19 @@ model Order {
   items     OrderItem[]
   tableId   String?
   table     Table?      @relation(fields: [tableId], references: [id])
-
-  // --- ✨ RELAÇÃO ADICIONADA ✨ ---
-  // Agora sabemos QUAL usuário criou o pedido.
-  // É opcional (?) para permitir pedidos antigos ou de sistema.
   userId    String?
   user      User?       @relation(fields: [userId], references: [id])
+
+  // ✨ ATUALIZADO: O pedido pertence a UMA empresa ✨
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 }
 
 model OrderItem {
   id        String  @id @default(uuid())
   quantity  Int
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade) // Adicionado onDelete: Cascade
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String
   product   Product @relation(fields: [productId], references: [id])
 }
@@ -94,4 +135,8 @@ model FinancialTransaction {
   dueDate     DateTime?
   paidAt      DateTime?
   createdAt   DateTime  @default(now())
+
+  // ✨ ATUALIZADO: A transação pertence a UMA empresa ✨
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
 }
