@@ -7,15 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==================================================================
-// ✨ NOVO MODELO 'COMPANY' (TENANT) ✨
-// Esta é a tabela principal que representa cada cliente (restaurante).
-// ==================================================================
 model Company {
   id    String @id @default(uuid())
-  name  String // Nome do restaurante (ex: "Pizzaria do Zé")
+  name  String
 
-  // Relações (Uma empresa tem...):
   users         User[]
   products      Product[]
   ingredients   Ingredient[]
@@ -23,10 +18,6 @@ model Company {
   orders        Order[]
   transactions  FinancialTransaction[]
 }
-
-// ==================================================================
-// MODELOS EXISTENTES (AGORA LIGADOS A UMA 'COMPANY')
-// ==================================================================
 
 enum Role {
   DONO
@@ -41,12 +32,9 @@ model User {
   role         Role     @default(CAIXA)
   createdAt    DateTime @default(now())
   orders       Order[]
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
 
-  // ✨ ATUALIZADO: O usuário agora pertence a UMA empresa ✨
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  // Garante que o email seja único *dentro* de uma mesma empresa
   @@unique([email, companyId])
 }
 
@@ -56,12 +44,9 @@ model Ingredient {
   stockQuantity Decimal
   unit          String
   recipeItems   RecipeItem[]
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id])
 
-  // ✨ ATUALIZADO: O ingrediente pertence a UMA empresa ✨
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-
-  // Garante que o nome do ingrediente seja único *dentro* da mesma empresa
   @@unique([name, companyId])
 }
 
@@ -81,25 +66,22 @@ model Product {
   createdAt   DateTime     @default(now())
   orderItems  OrderItem[]
   recipeItems RecipeItem[]
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id])
 
-  // ✨ ATUALIZADO: O produto pertence a UMA empresa ✨
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-  
-  // Garante que o nome do produto seja único *dentro* da mesma empresa
+  // --- ✨ ADIÇÃO AQUI ✨ ---
+  imageUrl    String? // Coluna opcional para o link da imagem
+
   @@unique([name, companyId])
 }
 
 model Table {
-  id     String  @id @default(uuid())
-  name   String
-  orders Order[]
-
-  // ✨ ATUALIZADO: A mesa pertence a UMA empresa ✨
+  id        String  @id @default(uuid())
+  name      String
+  orders    Order[]
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  // Garante que o nome da mesa seja único *dentro* da mesma empresa
   @@unique([name, companyId])
 }
 
@@ -112,10 +94,8 @@ model Order {
   table     Table?      @relation(fields: [tableId], references: [id])
   userId    String?
   user      User?       @relation(fields: [userId], references: [id])
-
-  // ✨ ATUALIZADO: O pedido pertence a UMA empresa ✨
   companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  company   Company     @relation(fields: [companyId], references: [id])
 }
 
 model OrderItem {
@@ -135,8 +115,6 @@ model FinancialTransaction {
   dueDate     DateTime?
   paidAt      DateTime?
   createdAt   DateTime  @default(now())
-
-  // ✨ ATUALIZADO: A transação pertence a UMA empresa ✨
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id])
 }

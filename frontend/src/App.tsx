@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// Importações do Mantine (Completas)
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput } from '@mantine/core';
+// Importações do Mantine (Completas e Verificadas)
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor } from '@mantine/core';
 
 // ==================================================================
-// INTERFACES (Com adição da User)
+// INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
 // ==================================================================
 interface Product { id: string; name: string; price: string; }
 interface OrderItem extends Product { quantity: number; }
@@ -28,12 +28,12 @@ interface RecipeItemForm {
   name: string;
   quantity: string;
 }
-// ✨ NOVO: Interface para o Usuário
 interface User {
   id: string;
   name: string;
   email: string;
-  role: 'DONO' | 'CAIXA'; // Define os papéis
+  role: 'DONO' | 'CAIXA';
+  companyId: string;
 }
 
 const socket = io('http://localhost:3333');
@@ -42,14 +42,19 @@ const socket = io('http://localhost:3333');
 // COMPONENTE PRINCIPAL APP
 // ==================================================================
 function App() {
-  // --- Estados de Autenticação ✨ ---
+  // --- Estados de Autenticação ---
+  const [appView, setAppView] = useState('LOGIN'); // LOGIN ou REGISTER
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState<User['role'] | null>(null); // ✨ NOVO ESTADO
+  const [userRole, setUserRole] = useState<User['role'] | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [registerName, setRegisterName] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [registerCompanyName, setRegisterCompanyName] = useState('');
 
-  // --- Estados de Navegação e Dados Globais ---
+  // --- Estados do App ---
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
   const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
@@ -76,15 +81,19 @@ function App() {
   const [selectedIngredientId, setSelectedIngredientId] = useState('');
   const [selectedIngredientQuantity, setSelectedIngredientQuantity] = useState('');
 
-  // --- Estados para a tela Financeira ---
+  // --- Estados do Financeiro ---
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [newTransactionDesc, setNewTransactionDesc] = useState('');
   const [newTransactionAmount, setNewTransactionAmount] = useState('');
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
+  // --- ✨ NOVO ESTADO para a Gestão de Mesas ---
+  const [newTableName, setNewTableName] = useState('');
+
+
   // --- Efeitos ---
-  // ✨ ATUALIZADO: useEffect para carregar token E dados do usuário ✨
+  // Verifica o token no localStorage ao carregar
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const userDataString = localStorage.getItem('userData');
@@ -92,38 +101,37 @@ function App() {
     if (token && userDataString) {
       console.log("Token e Usuário encontrados, configurando app...");
       const userData: User = JSON.parse(userDataString);
-      
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUserRole(userData.role);
       setIsAuthenticated(true);
     } else {
       console.log("Nenhum token/usuário encontrado, usuário precisa logar.");
     }
-
-    // Busca produtos (agora protegido, mas o token já foi setado se existir)
-    axios.get('http://localhost:3333/products')
-      .then(response => setProducts(response.data))
-      .catch(error => {
-        console.error("Erro ao buscar produtos:", error);
-        if (error.response && error.response.status === 401) {
-          handleLogout(); // Desloga se o token for inválido
-        }
-      });
-
-    socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
-    return () => { socket.off('new_order'); };
   }, []); // Roda apenas uma vez
 
-  // useEffect que busca dados da view atual
+  // Busca produtos (agora é protegido, então só roda se autenticado)
+  useEffect(() => {
+    if (isAuthenticated) {
+      axios.get('http://localhost:3333/products')
+        .then(response => setProducts(response.data))
+        .catch(error => {
+          console.error("Erro ao buscar produtos:", error);
+          if (error.response && error.response.status === 401) handleLogout();
+        });
+
+      socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
+    }
+    return () => { socket.off('new_order'); };
+  }, [isAuthenticated]); // Roda quando autentica
+
+  // Busca dados da view atual
   useEffect(() => {
     if (isAuthenticated && currentView) {
       console.log(`[EFFECT 2] View mudou para: ${currentView}. Buscando dados...`);
-      
-      // Evita que o CAIXA tente buscar dados que não pode
       if (userRole === 'CAIXA' && (currentView === 'DASHBOARD' || currentView === 'MANAGEMENT' || currentView === 'FINANCIAL')) {
         console.warn(`[EFFECT 2] CAIXA tentou acessar view ${currentView}. Redirecionando.`);
-        setCurrentView('TABLE_SELECTION'); // Redireciona para o PDV
-        return; // Para a execução
+        setCurrentView('TABLE_SELECTION');
+        return;
       }
       
       switch (currentView) {
@@ -136,6 +144,8 @@ function App() {
             if(response.data.length > 0 && !selectedIngredientId) { setSelectedIngredientId(response.data[0].id); }
           }).catch(error => console.error("Erro ao buscar ingredientes:", error));
           axios.get('http://localhost:3333/products').then(response => setProducts(response.data)).catch(error => console.error("Erro ao buscar produtos (gestão):", error));
+          // ✨ ADICIONADO: Busca mesas também na tela de gestão
+          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro ao buscar mesas (gestão):", error));
           break;
         case 'TABLE_SELECTION':
           axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro ao buscar mesas:", error));
@@ -147,10 +157,10 @@ function App() {
           console.log(`[EFFECT 2] Nenhuma busca de dados específica para a view: ${currentView}`);
       }
     }
-  }, [currentView, isAuthenticated, userRole]); // Adicionado userRole
+  }, [currentView, isAuthenticated, userRole, selectedIngredientId]);
 
 
-  // --- Funções de Autenticação ✨ ---
+  // --- Funções de Autenticação ---
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
     setAuthError('');
@@ -161,9 +171,9 @@ function App() {
       });
       const { token, user } = response.data;
       localStorage.setItem('authToken', token);
-      localStorage.setItem('userData', JSON.stringify(user)); // ✨ Salva o usuário
+      localStorage.setItem('userData', JSON.stringify(user));
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUserRole(user.role); // ✨ Salva o role
+      setUserRole(user.role);
       setIsAuthenticated(true);
     } catch (error) {
       console.error("Erro de login:", error);
@@ -171,15 +181,46 @@ function App() {
     }
   }
 
-  function handleLogout() {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userData'); // ✨ Limpa o usuário
-    delete axios.defaults.headers.common['Authorization'];
-    setIsAuthenticated(false);
-    setUserRole(null); // ✨ Limpa o role
+  async function handleRegister(event: FormEvent) {
+    event.preventDefault();
+    setAuthError('');
+    const payload = {
+      email: registerEmail,
+      name: registerName,
+      password: registerPassword,
+      companyName: registerCompanyName
+    };
+    try {
+      await axios.post('http://localhost:3333/auth/register', payload);
+      const loginResponse = await axios.post('http://localhost:3333/auth/login', {
+        email: registerEmail,
+        password: registerPassword,
+      });
+      const { token, user } = loginResponse.data;
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('userData', JSON.stringify(user));
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setUserRole(user.role);
+      setIsAuthenticated(true);
+    } catch (error: any) {
+      console.error("Erro de registro:", error);
+      if (error.response && error.response.data && error.response.data.message) {
+        setAuthError(error.response.data.message);
+      } else {
+        setAuthError('Erro ao registrar. Tente novamente.');
+      }
+    }
   }
 
-  // --- Funções de Lógica de Negócio --- (COMPLETAS)
+  function handleLogout() {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userData');
+    delete axios.defaults.headers.common['Authorization'];
+    setIsAuthenticated(false);
+    setUserRole(null);
+  }
+
+  // --- Funções de Lógica de Negócio ---
   function handleSelectTable(table: Table) { setSelectedTable(table); setCurrentView('ORDER'); }
   function handleGoBackToTables() { setSelectedTable(null); setOrderItems([]); setCurrentView('TABLE_SELECTION'); }
   function addProductToOrder(product: Product) {
@@ -217,7 +258,29 @@ function App() {
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
 
-  // --- Renderização das Views --- (COMPLETAS)
+  // --- ✨ NOVA FUNÇÃO: Criar uma Mesa ---
+  async function handleCreateTable(event: FormEvent) {
+    event.preventDefault();
+    if (!newTableName) {
+      alert('Por favor, insira um nome para a mesa.');
+      return;
+    }
+    try {
+      const response = await axios.post('http://localhost:3333/tables', { name: newTableName });
+      setTables([...tables, response.data]); // Adiciona a nova mesa à lista
+      setNewTableName(''); // Limpa o formulário
+      alert('Mesa criada com sucesso!');
+    } catch (error: any) {
+      console.error("Erro ao criar mesa:", error);
+      if (error.response && error.response.data && error.response.data.message) {
+        alert(`Erro: ${error.response.data.message}`);
+      } else {
+        alert('Erro ao criar mesa.');
+      }
+    }
+  }
+
+  // --- Renderização --- (COMPLETA)
   const renderView = () => {
     switch (currentView) {
       case 'DASHBOARD':
@@ -258,12 +321,21 @@ function App() {
           </Container>
         );
 
+      // ✨ TELA DE GESTÃO ATUALIZADA COM A ABA "MESAS" ✨
       case 'MANAGEMENT':
         return (
           <Container size="lg" mt="md">
             <Title order={1} mb="xl">Gestão</Title>
+            
             <Tabs value={managementSubView} onChange={setManagementSubView}>
-              <Tabs.List grow> <Tabs.Tab value="insumos">Gestão de Insumos</Tabs.Tab> <Tabs.Tab value="produtos">Gestão de Produtos</Tabs.Tab> </Tabs.List>
+              <Tabs.List grow>
+                <Tabs.Tab value="insumos">Gestão de Insumos</Tabs.Tab>
+                <Tabs.Tab value="produtos">Gestão de Produtos</Tabs.Tab>
+                {/* ✨ NOVA ABA DE MESAS ✨ */}
+                <Tabs.Tab value="mesas">Gestão de Mesas</Tabs.Tab>
+              </Tabs.List>
+
+              {/* Painel da Aba Insumos */}
               <Tabs.Panel value="insumos" pt="lg">
                 <Title order={2} mb="lg">Gestão de Estoque - Insumos</Title>
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateIngredient}>
@@ -273,6 +345,8 @@ function App() {
                 <Title order={2} mb="md">Insumos em Estoque</Title>
                 <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Estoque Atual</Table.Th> <Table.Th>Unidade</Table.Th> </Table.Tr> </Table.Thead> <Table.Tbody>{ingredients.map(ing => ( <Table.Tr key={ing.id}> <Table.Td>{ing.name}</Table.Td> <Table.Td>{parseFloat(String(ing.stockQuantity) || '0').toFixed(2)}</Table.Td> <Table.Td>{ing.unit}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
               </Tabs.Panel>
+
+              {/* Painel da Aba Produtos */}
               <Tabs.Panel value="produtos" pt="lg">
                  <Title order={2} mb="lg">Gestão de Produtos</Title>
                  <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateProduct}>
@@ -281,6 +355,42 @@ function App() {
                  </Paper>
                  <Title order={2} mb="md">Produtos Cadastrados</Title>
                  <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Preço (R$)</Table.Th> </Table.Tr> </Table.Thead> <Table.Tbody>{products.map(p => ( <Table.Tr key={p.id}> <Table.Td>{p.name}</Table.Td> <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
+              </Tabs.Panel>
+              
+              {/* --- ✨ NOVO PAINEL DE MESAS ✨ --- */}
+              <Tabs.Panel value="mesas" pt="lg">
+                <Title order={2} mb="lg">Gestão de Mesas</Title>
+                
+                <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateTable}>
+                  <Title order={3} mb="md">Adicionar Nova Mesa</Title>
+                  <Group align="flex-end">
+                    <TextInput
+                      label="Nome da Mesa"
+                      placeholder="Ex: Mesa 01, Balcão 02"
+                      value={newTableName}
+                      onChange={(event) => setNewTableName(event.currentTarget.value)}
+                      required
+                      style={{ flex: 1 }}
+                    />
+                    <Button type="submit">Adicionar Mesa</Button>
+                  </Group>
+                </Paper>
+                
+                <Title order={2} mb="md">Mesas Cadastradas</Title>
+                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Nome da Mesa</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {tables.map(table => (
+                      <Table.Tr key={table.id}>
+                        <Table.Td>{table.name}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
               </Tabs.Panel>
             </Tabs>
           </Container>
@@ -398,48 +508,57 @@ function App() {
     }
   };
   
-  // --- ✨ RENDERIZAÇÃO PRINCIPAL (CONDICIONAL) ✨ ---
-  // Se não estiver autenticado, mostra a tela de Login
+  // --- Telas de Login / Registro ---
   if (!isAuthenticated) {
-    return (
-      <Container size={420} my={40}>
-        <Title ta="center">Login - Meu PDV</Title>
-        <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleLogin}>
-          <Stack>
-            <TextInput
-              label="Email"
-              placeholder="seu@email.com"
-              value={loginEmail}
-              onChange={(event) => setLoginEmail(event.currentTarget.value)}
-              required
-            />
-            <PasswordInput
-              label="Senha"
-              placeholder="Sua senha"
-              value={loginPassword}
-              onChange={(event) => setLoginPassword(event.currentTarget.value)}
-              required
-            />
-            {authError && <Text c="red" size="sm">{authError}</Text>}
-            <Button type="submit" mt="md">Entrar</Button>
-          </Stack>
-        </Paper>
-      </Container>
-    );
+    if (appView === 'LOGIN') {
+      return (
+        <Container size={420} my={40}>
+          <Title ta="center">Login - Meu PDV</Title>
+          <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleLogin}>
+            <Stack>
+              <TextInput label="Email" placeholder="seu@email.com" value={loginEmail} onChange={(event) => setLoginEmail(event.currentTarget.value)} required />
+              <PasswordInput label="Senha" placeholder="Sua senha" value={loginPassword} onChange={(event) => setLoginPassword(event.currentTarget.value)} required />
+              {authError && <Text c="red" size="sm">{authError}</Text>}
+              <Button type="submit" mt="md">Entrar</Button>
+              <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('REGISTER')} size="sm">
+                Não tem uma conta? Crie sua empresa agora
+              </Anchor>
+            </Stack>
+          </Paper>
+        </Container>
+      );
+    }
+
+    if (appView === 'REGISTER') {
+      return (
+        <Container size={420} my={40}>
+          <Title ta="center">Crie sua Conta</Title>
+          <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleRegister}>
+            <Stack>
+              <TextInput label="Nome da Empresa" placeholder="Ex: Pizzaria do Zé" value={registerCompanyName} onChange={(event) => setRegisterCompanyName(event.currentTarget.value)} required />
+              <TextInput label="Seu Nome (Dono)" placeholder="Ex: José Silva" value={registerName} onChange={(event) => setRegisterName(event.currentTarget.value)} required />
+              <TextInput label="Email" placeholder="seu@email.com" value={registerEmail} onChange={(event) => setRegisterEmail(event.currentTarget.value)} required />
+              <PasswordInput label="Senha" placeholder="Crie uma senha forte" value={registerPassword} onChange={(event) => setRegisterPassword(event.currentTarget.value)} required />
+              {authError && <Text c="red" size="sm">{authError}</Text>}
+              <Button type="submit" mt="md">Registrar Empresa</Button>
+              <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('LOGIN')} size="sm">
+                Já tem uma conta? Faça login
+              </Anchor>
+            </Stack>
+          </Paper>
+        </Container>
+      );
+    }
   }
 
-  // Se ESTIVER autenticado, mostra o AppShell completo
+  // --- AppShell (Navegação principal) ---
   return (
     <AppShell padding="md" header={{ height: 60 }}>
       <AppShell.Header>
         <Group h="100%" px="md">
           <Title order={3}>Meu PDV</Title>
           <Group justify="flex-end" style={{ flex: 1 }}>
-            
-            {/* Botão do PDV (Todos veem) */}
             <Button variant={currentView.includes('TABLE') || currentView.includes('ORDER') ? 'filled' : 'subtle'} onClick={() => setCurrentView('TABLE_SELECTION')}>Mesas & PDV</Button>
-            
-            {/* ✨ CONDIÇÃO: Apenas 'DONO' vê os botões de gestão ✨ */}
             {userRole === 'DONO' && (
               <>
                 <Button variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dashboard</Button>
@@ -447,12 +566,10 @@ function App() {
                 <Button variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Financeiro</Button>
               </>
             )}
-            
             <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button>
           </Group>
         </Group>
       </AppShell.Header>
-
       <AppShell.Main>
         <Container size="xl">
           {renderView()}

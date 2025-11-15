@@ -6,6 +6,10 @@ import { Server } from 'socket.io';
 import { Decimal } from '@prisma/client/runtime/library';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+// NOVAS IMPORTAÇÕES PARA UPLOAD
+import { createClient } from '@supabase/supabase-js';
+import multer from 'multer';
+import path from 'path';
 
 const app = express();
 app.use(cors());
@@ -20,6 +24,14 @@ const prisma = new PrismaClient();
 const port = 3333;
 
 const JWT_SECRET_KEY = "SEU_PROJETO_ESTA_FICANDO_INCRIVEL";
+
+// --- CONFIGURAÇÃO DO SUPABASE STORAGE E MULTER ---
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
 
 // ==================================================================
 // INTERFACE DO TOKEN E EXTENSÃO DO EXPRESS
@@ -42,7 +54,7 @@ declare global {
 }
 
 // ==================================================================
-// MIDDLEWARES DE AUTENTICAÇÃO E AUTORIZAÇÃO
+// MIDDLEWARES DE AUTENTICAÇÃO E AUTORIZAÇÃO (DEFINIDOS UMA SÓ VEZ)
 // ==================================================================
 const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -74,73 +86,28 @@ const checkRole = (roles: Role[]) => {
 // ==================================================================
 app.post('/auth/register', async (request, response) => {
   const { email, name, password, companyName } = request.body; 
-
-  if (!companyName) {
-    return response.status(400).json({ message: "O nome da empresa é obrigatório." });
-  }
-
+  if (!companyName) { return response.status(400).json({ message: "O nome da empresa é obrigatório." }); }
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
-
   try {
     const newCompany = await prisma.company.create({
-      data: {
-        name: companyName,
-        users: {
-          create: {
-            email,
-            name,
-            passwordHash,
-            role: 'DONO' 
-          }
-        }
-      },
-      include: {
-        users: true 
-      }
+      data: { name: companyName, users: { create: { email, name, passwordHash, role: 'DONO' } } },
+      include: { users: true }
     });
-
     const user = newCompany.users[0];
     const { passwordHash: _, ...userWithoutPassword } = user;
     return response.status(201).json(userWithoutPassword);
-
-  } catch (error) {
-    console.error(error);
-    return response.status(409).json({ message: "Erro ao criar empresa. O email ou nome da empresa pode já existir." });
-  }
+  } catch (error) { console.error(error); return response.status(409).json({ message: "Erro ao criar empresa." }); }
 });
 
 app.post('/auth/login', async (request, response) => {
   const { email, password } = request.body;
-  
-  const user = await prisma.user.findUnique({
-    where: { email }
-  });
-  
-  if (!user) {
-    return response.status(404).json({ message: "Usuário não encontrado." });
-  }
-  
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) { return response.status(404).json({ message: "Usuário não encontrado." }); }
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-  if (!isPasswordValid) {
-    return response.status(401).json({ message: "Senha inválida." });
-  }
-  
-  const token = jwt.sign(
-    { 
-      userId: user.id, 
-      role: user.role,
-      name: user.name,
-      companyId: user.companyId 
-    },
-    JWT_SECRET_KEY,
-    { expiresIn: '1d' }
-  );
-  
-  return response.status(200).json({
-    token,
-    user: { id: user.id, name: user.name, email: user.email, role: user.role, companyId: user.companyId }
-  });
+  if (!isPasswordValid) { return response.status(401).json({ message: "Senha inválida." }); }
+  const token = jwt.sign( { userId: user.id, role: user.role, name: user.name, companyId: user.companyId }, JWT_SECRET_KEY, { expiresIn: '1d' } );
+  return response.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, companyId: user.companyId } });
 });
 
 // ==================================================================
@@ -148,10 +115,7 @@ app.post('/auth/login', async (request, response) => {
 // ==================================================================
 app.get('/ingredients', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const companyId = request.user.companyId;
-  const ingredients = await prisma.ingredient.findMany({ 
-    where: { companyId: companyId },
-    orderBy: { name: 'asc' } 
-  });
+  const ingredients = await prisma.ingredient.findMany({ where: { companyId: companyId }, orderBy: { name: 'asc' } });
   return response.json(ingredients);
 });
 
@@ -159,13 +123,9 @@ app.post('/ingredients', authMiddleware, checkRole(['DONO']), async (request, re
   const companyId = request.user.companyId;
   const { name, stockQuantity, unit } = request.body;
   try {
-    const ingredient = await prisma.ingredient.create({
-      data: { name, stockQuantity: new Decimal(stockQuantity), unit, companyId: companyId }
-    });
+    const ingredient = await prisma.ingredient.create({ data: { name, stockQuantity: new Decimal(stockQuantity), unit, companyId: companyId } });
     return response.status(201).json(ingredient);
-  } catch (error) {
-    return response.status(409).json({ message: "Ingredient name already exists." });
-  }
+  } catch (error) { return response.status(409).json({ message: "Ingredient name already exists." }); }
 });
 
 // ==================================================================
@@ -186,9 +146,7 @@ app.post('/products', authMiddleware, checkRole(['DONO']), async (request, respo
   try {
     const product = await prisma.product.create({
       data: {
-        name,
-        price: new Decimal(price),
-        companyId: companyId,
+        name, price: new Decimal(price), companyId: companyId,
         recipeItems: recipeItems && recipeItems.length > 0 ? {
           create: recipeItems.map((item: any) => ({
             ingredientId: item.ingredientId,
@@ -198,20 +156,67 @@ app.post('/products', authMiddleware, checkRole(['DONO']), async (request, respo
       }
     });
     return response.status(201).json(product);
-  } catch (error) {
-     return response.status(409).json({ message: "Product name already exists." });
-  }
+  } catch (error) { return response.status(409).json({ message: "Product name already exists." }); }
 });
+
+// --- ✨ NOVA ROTA DE UPLOAD DE IMAGEM ✨ ---
+app.post(
+  '/products/:id/upload',
+  authMiddleware,
+  checkRole(['DONO']),
+  upload.single('image'), 
+  async (request: Request, response: Response) => {
+    
+    const { id: productId } = request.params;
+    const { companyId } = request.user;
+    
+    if (!request.file) {
+      return response.status(400).json({ message: "Nenhum arquivo enviado." });
+    }
+
+    const fileExtension = path.extname(request.file.originalname);
+    const fileName = `${companyId}/${productId}_${Date.now()}${fileExtension}`;
+
+    try {
+      const { data, error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, request.file.buffer, {
+          contentType: request.file.mimetype,
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) { throw uploadError; }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(fileName);
+
+      const updatedProduct = await prisma.product.update({
+        where: {
+          id: productId,
+          companyId: companyId
+        },
+        data: {
+          imageUrl: publicUrl
+        }
+      });
+
+      return response.status(200).json(updatedProduct);
+
+    } catch (error) {
+      console.error("Erro no upload:", error);
+      return response.status(500).json({ message: "Falha no upload da imagem." });
+    }
+  }
+);
 
 // ==================================================================
 // ROTAS DE MESAS
 // ==================================================================
 app.get('/tables', authMiddleware, async (request, response) => {
   const companyId = request.user.companyId;
-  const tables = await prisma.table.findMany({ 
-    where: { companyId: companyId },
-    orderBy: { name: 'asc' } 
-  });
+  const tables = await prisma.table.findMany({ where: { companyId: companyId }, orderBy: { name: 'asc' } });
   return response.status(200).json(tables);
 });
 
@@ -219,13 +224,9 @@ app.post('/tables', authMiddleware, checkRole(['DONO']), async (request, respons
   const companyId = request.user.companyId;
   const { name } = request.body;
   try {
-    const table = await prisma.table.create({ 
-      data: { name, companyId: companyId }
-    });
+    const table = await prisma.table.create({ data: { name, companyId: companyId } });
     return response.status(201).json(table);
-  } catch (error) {
-    return response.status(409).json({ message: "Table name already exists." });
-  }
+  } catch (error) { return response.status(409).json({ message: "Table name already exists." }); }
 });
 
 // ==================================================================
@@ -243,7 +244,7 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
   });
   
   if (productsInDb.length !== items.length) {
-    return response.status(400).json({ message: "Um ou mais produtos são inválidos ou não pertencem a esta empresa." });
+    return response.status(400).json({ message: "Um ou mais produtos são inválidos." });
   }
 
   const stockUpdates: any[] = [];
@@ -278,10 +279,7 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
     const [createdOrder] = await prisma.$transaction([
       prisma.order.create({
         data: {
-          total,
-          tableId,
-          userId: userId,
-          companyId: companyId,
+          total, tableId, userId: userId, companyId: companyId,
           items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
         },
         include: { items: { include: { product: true } } }
@@ -290,10 +288,7 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
     ]);
     io.emit('new_order', createdOrder);
     return response.status(201).json(createdOrder);
-  } catch (error) {
-    console.error("Transaction failed: ", error);
-    return response.status(500).json({ message: "Failed to process order and update stock." });
-  }
+  } catch (error) { console.error("Transaction failed: ", error); return response.status(500).json({ message: "Failed to process order and update stock." }); }
 });
 
 // ==================================================================
@@ -301,10 +296,7 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
 // ==================================================================
 app.get('/financial/transactions', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const companyId = request.user.companyId;
-  const transactions = await prisma.financialTransaction.findMany({
-    where: { companyId: companyId },
-    orderBy: { createdAt: 'desc' }
-  });
+  const transactions = await prisma.financialTransaction.findMany({ where: { companyId: companyId }, orderBy: { createdAt: 'desc' } });
   return response.status(200).json(transactions);
 });
 
@@ -313,23 +305,14 @@ app.post('/financial/transactions', authMiddleware, checkRole(['DONO']), async (
   const { description, amount, type, dueDate } = request.body;
   try {
     const transaction = await prisma.financialTransaction.create({
-      data: {
-        description,
-        amount: new Decimal(amount),
-        type,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        companyId: companyId
-      }
+      data: { description, amount: new Decimal(amount), type, dueDate: dueDate ? new Date(dueDate) : null, companyId: companyId }
     });
     return response.status(201).json(transaction);
-  } catch (error) {
-    console.error("Failed to create transaction: ", error);
-    return response.status(500).json({ message: "Failed to create transaction." });
-  }
+  } catch (error) { console.error("Failed to create transaction: ", error); return response.status(500).json({ message: "Failed to create transaction." }); }
 });
 
 // ==================================================================
-// ROTA DE DASHBOARD (✨ COM CORREÇÕES DE 'undefined' ✨)
+// ROTA DE DASHBOARD
 // ==================================================================
 app.get('/dashboard/today', authMiddleware, checkRole(['DONO']), async (request, response) => {
     const companyId = request.user.companyId;
@@ -339,36 +322,32 @@ app.get('/dashboard/today', authMiddleware, checkRole(['DONO']), async (request,
     const salesData = await prisma.order.aggregate({
         where: { createdAt: { gte: today }, companyId: companyId },
         _sum: { total: true },
-        _count: { id: true } // Corrigido de '_all' para 'id'
+        _count: { id: true }
     });
 
     const topProductsRaw = await prisma.orderItem.groupBy({
         by: ['productId'],
-        where: { 
-          order: { createdAt: { gte: today }, companyId: companyId }
-        },
+        where: { order: { createdAt: { gte: today }, companyId: companyId } },
         _sum: { quantity: true },
         orderBy: { _sum: { quantity: 'desc' } },
         take: 5
     });
 
     const topProductIds = topProductsRaw.map(p => p.productId);
-    const productDetails = await prisma.product.findMany({ 
-      where: { id: { in: topProductIds }, companyId: companyId }
-    });
+    const productDetails = await prisma.product.findMany({ where: { id: { in: topProductIds }, companyId: companyId } });
 
     const topProducts = topProductsRaw.map(p => {
         const product = productDetails.find(pd => pd.id === p.productId);
         return {
             productId: p.productId,
             name: product?.name || 'Produto não encontrado',
-            quantitySold: p._sum?.quantity || 0 // ✨ CORREÇÃO AQUI
+            quantitySold: p._sum?.quantity || 0
         }
     });
 
     const dashboardData = {
-        totalRevenue: salesData._sum?.total || 0, // ✨ CORREÇÃO AQUI
-        orderCount: salesData._count?.id || 0, // ✨ CORREÇÃO AQUI
+        totalRevenue: salesData._sum?.total || 0,
+        orderCount: salesData._count?.id || 0,
         topProducts: topProducts
     };
     return response.status(200).json(dashboardData);
