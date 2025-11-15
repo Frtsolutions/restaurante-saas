@@ -4,6 +4,9 @@ import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
 import { Decimal } from '@prisma/client/runtime/library';
+// ✨ NOVAS IMPORTAÇÕES DE SEGURANÇA ✨
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 app.use(cors());
@@ -17,8 +20,89 @@ const io = new Server(server, {
 const prisma = new PrismaClient();
 const port = 3333;
 
+// ✨ CHAVE SECRETA PARA O TOKEN JWT ✨
+// (Em um projeto real, isso DEVE estar no seu arquivo .env!)
+const JWT_SECRET_KEY = "SEU_PROJETO_ESTA_FICANDO_INCRIVEL";
+
 // ==================================================================
-// ROTAS DE INGREDIENTES / INSUMOS
+// ✨ NOVAS ROTAS DE AUTENTICAÇÃO ✨
+// ==================================================================
+
+// Rota para REGISTRAR um novo usuário
+app.post('/auth/register', async (request, response) => {
+  const { email, name, password, role } = request.body; // Role é opcional, pode ser DONO ou CAIXA
+
+  // 1. Criptografar a senha
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(password, salt);
+
+  try {
+    // 2. Salvar o usuário no banco
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash, // Salva a senha criptografada
+        role: role || 'CAIXA' // Se nenhum role for passado, vira CAIXA
+      }
+    });
+
+    // 3. Remover o hash da senha antes de enviar a resposta
+    const { passwordHash: _, ...userWithoutPassword } = user;
+    return response.status(201).json(userWithoutPassword);
+
+  } catch (error) {
+    console.error(error);
+    // P1001 é erro de conexão, P2002 é erro de campo único (email já existe)
+    return response.status(409).json({ message: "Email já cadastrado." });
+  }
+});
+
+// Rota para FAZER LOGIN
+app.post('/auth/login', async (request, response) => {
+  const { email, password } = request.body;
+
+  // 1. Encontrar o usuário pelo email
+  const user = await prisma.user.findUnique({
+    where: { email }
+  });
+
+  if (!user) {
+    return response.status(404).json({ message: "Usuário não encontrado." });
+  }
+
+  // 2. Comparar a senha enviada com o hash salvo no banco
+  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+
+  if (!isPasswordValid) {
+    return response.status(401).json({ message: "Senha inválida." });
+  }
+
+  // 3. Gerar o Token JWT (JSON Web Token)
+  const token = jwt.sign(
+    { 
+      userId: user.id, 
+      role: user.role,
+      name: user.name
+    },
+    JWT_SECRET_KEY,
+    { expiresIn: '1d' } // Token expira em 1 dia
+  );
+
+  // 4. Enviar o token e os dados do usuário (sem a senha)
+  return response.status(200).json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    }
+  });
+});
+
+// ==================================================================
+// ROTAS DE INGREDIENTES / INSUMOS (SEM ALTERAÇÕES)
 // ==================================================================
 app.get('/ingredients', async (request, response) => {
   const ingredients = await prisma.ingredient.findMany({ orderBy: { name: 'asc' } });
@@ -38,7 +122,7 @@ app.post('/ingredients', async (request, response) => {
 });
 
 // ==================================================================
-// ROTAS DE PRODUTOS
+// ROTAS DE PRODUTOS (SEM ALTERAÇÕES)
 // ==================================================================
 app.get('/products', async (request, response) => {
   const products = await prisma.product.findMany({ orderBy: { name: 'asc' } });
@@ -67,7 +151,7 @@ app.post('/products', async (request, response) => {
 });
 
 // ==================================================================
-// ROTAS DE MESAS
+// ROTAS DE MESAS (SEM ALTERAÇÕES)
 // ==================================================================
 app.get('/tables', async (request, response) => {
   const tables = await prisma.table.findMany({ orderBy: { name: 'asc' } });
@@ -85,7 +169,7 @@ app.post('/tables', async (request, response) => {
 });
 
 // ==================================================================
-// ROTA DE PEDIDOS (com Baixa Automática de Estoque)
+// ROTA DE PEDIDOS (SEM ALTERAÇÕES POR ENQUANTO)
 // ==================================================================
 type OrderItemInput = { productId: string; quantity: number; }
 
@@ -133,6 +217,7 @@ app.post('/orders', async (request, response) => {
           total,
           tableId,
           items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
+          // userId: "..." // No futuro, pegaremos o ID do usuário logado e salvaremos aqui
         },
         include: { items: { include: { product: true } } }
       }),
@@ -147,19 +232,15 @@ app.post('/orders', async (request, response) => {
 });
 
 // ==================================================================
-// ✨ NOVAS ROTAS PARA O FINANCEIRO
+// ROTAS DO FINANCEIRO (SEM ALTERAÇÕES)
 // ==================================================================
-// Rota para LISTAR todas as transações financeiras
 app.get('/financial/transactions', async (request, response) => {
   const transactions = await prisma.financialTransaction.findMany({
-    orderBy: {
-      createdAt: 'desc'
-    }
+    orderBy: { createdAt: 'desc' }
   });
   return response.status(200).json(transactions);
 });
 
-// Rota para CRIAR uma nova transação (despesa ou receita manual)
 app.post('/financial/transactions', async (request, response) => {
   const { description, amount, type, dueDate } = request.body;
   try {
@@ -167,7 +248,7 @@ app.post('/financial/transactions', async (request, response) => {
       data: {
         description,
         amount: new Decimal(amount),
-        type, // Deve ser 'DESPESA' ou 'RECEITA'
+        type,
         dueDate: dueDate ? new Date(dueDate) : null
       }
     });
@@ -179,7 +260,7 @@ app.post('/financial/transactions', async (request, response) => {
 });
 
 // ==================================================================
-// ROTA DE DASHBOARD
+// ROTA DE DASHBOARD (SEM ALTERAÇÕES)
 // ==================================================================
 app.get('/dashboard/today', async (request, response) => {
     const today = new Date();
@@ -220,7 +301,7 @@ app.get('/dashboard/today', async (request, response) => {
 });
 
 // ==================================================================
-// INICIA O SERVIDOR
+// INICIA O SERVIDOR (SEM ALTERAÇÕES)
 // ==================================================================
 server.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);

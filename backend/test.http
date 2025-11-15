@@ -1,23 +1,19 @@
-### 1. CADASTRAR UMA CONTA DE LUZ
-POST http://localhost:3333/financial/transactions
+### 1. REGISTRAR O PRIMEIRO USUÁRIO (DONO)
+POST http://localhost:3333/auth/register
 Content-Type: application/json
 
 {
-  "description": "Conta de Luz - Outubro",
-  "amount": 450.75,
-  "type": "DESPESA",
-  "dueDate": "2025-10-25T00:00:00Z"
+  "email": "dono@meupdv.com",
+  "name": "Dono do Restaurante",
+  "password": "senhaforte123",
+  "role": "DONO" 
 }
 
-### 2. CADASTRAR UMA CONTA DE ALUGUEL
-POST http://localhost:3333/financial/transactions
+### 2. FAZER LOGIN COM O USUÁRIO DONO
+POST http://localhost:3333/auth/login
 Content-Type: application/json
 
 {
-  "description": "Aluguel - Outubro",
-  "amount": 2500.00,
-  "type": "DESPESA"
+  "email": "dono@meupdv.com",
+  "password": "senhaforte123"
 }
-
-### 3. LISTAR TODAS AS TRANSAÇÕES FINANCEIRAS
-GET http://localhost:3333/financial/transactions

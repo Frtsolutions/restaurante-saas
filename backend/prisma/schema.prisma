@@ -7,6 +7,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ==================================================================
+// ✨ NOVOS MODELOS DE AUTENTICAÇÃO ✨
+// ==================================================================
+enum Role {
+  DONO  // Administrador, pode ver tudo
+  CAIXA // Operador, pode apenas fazer vendas
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique // Usaremos o email como login
+  name         String
+  passwordHash String   // NUNCA guardamos a senha, apenas o hash dela
+  role         Role     @default(CAIXA)
+  createdAt    DateTime @default(now())
+
+  // Relação: Um usuário pode ter criado vários pedidos
+  orders Order[]
+}
+
+// ==================================================================
+// MODELOS EXISTENTES (COM ATUALIZAÇÃO NO ORDER)
+// ==================================================================
 model Ingredient {
   id            String       @id @default(uuid())
   name          String       @unique
@@ -26,7 +49,7 @@ model RecipeItem {
 
 model Product {
   id          String       @id @default(uuid())
-  name        String       @unique // Adicionei @unique aqui, é uma boa prática
+  name        String       @unique
   price       Decimal
   createdAt   DateTime     @default(now())
   orderItems  OrderItem[]
@@ -46,26 +69,29 @@ model Order {
   items     OrderItem[]
   tableId   String?
   table     Table?      @relation(fields: [tableId], references: [id])
+
+  // --- ✨ RELAÇÃO ADICIONADA ✨ ---
+  // Agora sabemos QUAL usuário criou o pedido.
+  // É opcional (?) para permitir pedidos antigos ou de sistema.
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id])
 }
 
 model OrderItem {
   id        String  @id @default(uuid())
   quantity  Int
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade) // Adicionado onDelete: Cascade
   productId String
   product   Product @relation(fields: [productId], references: [id])
 }
 
-// ==================================================================
-// ✨ NOSSO NOVO MODELO FINANCEIRO
-// ==================================================================
 model FinancialTransaction {
   id          String    @id @default(uuid())
-  description String    // Ex: "Aluguel", "Fornecedor de Bebidas"
-  amount      Decimal   // O valor da transação
-  type        String    // 'DESPESA' (Expense) ou 'RECEITA' (Revenue)
-  dueDate     DateTime? // Data de vencimento (para contas a pagar)
-  paidAt      DateTime? // Data que foi paga (para conciliação)
+  description String
+  amount      Decimal
+  type        String
+  dueDate     DateTime?
+  paidAt      DateTime?
   createdAt   DateTime  @default(now())
 }

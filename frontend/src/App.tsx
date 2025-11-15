@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// ✨ Importações do Mantine (Verificadas e completas) ✨
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea } from '@mantine/core';
-
+// Importações do Mantine (Completas)
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput } from '@mantine/core';
 
 // ==================================================================
 // INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -36,74 +35,128 @@ const socket = io('http://localhost:3333');
 // COMPONENTE PRINCIPAL APP
 // ==================================================================
 function App() {
-  // --- Estados --- (Sem alterações)
+  // --- Estados de Autenticação ✨ ---
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // --- Estados de Navegação e Dados Globais ---
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
   const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
+  
+  // --- Estados do PDV ---
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  
+  // --- Estados do KDS e Dashboard ---
   const [kdsOrders, setKdsOrders] = useState<FullOrder[]>([]);
   const [dashboardData, setDashboardData] = useState<DashboardData>({ totalRevenue: 0, orderCount: 0, topProducts: [] });
+  
+  // --- Estados da Gestão de Insumos ---
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [newIngredientName, setNewIngredientName] = useState('');
   const [newIngredientQuantity, setNewIngredientQuantity] = useState('');
   const [newIngredientUnit, setNewIngredientUnit] = useState('un');
+  
+  // --- Estados da Gestão de Produtos ---
   const [managementSubView, setManagementSubView] = useState<string | null>('insumos');
   const [newProductName, setNewProductName] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState('');
   const [selectedIngredientQuantity, setSelectedIngredientQuantity] = useState('');
+
+  // --- Estados para a tela Financeira ---
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [newTransactionDesc, setNewTransactionDesc] = useState('');
   const [newTransactionAmount, setNewTransactionAmount] = useState('');
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
-  // --- Efeitos --- (SEU CÓDIGO - SEM ALTERAÇÕES)
+  // --- Efeitos ---
+  // ✨ NOVO: useEffect para verificar o token no localStorage ao carregar ✨
   useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      console.log("Token encontrado no localStorage, configurando axios...");
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setIsAuthenticated(true);
+    } else {
+      console.log("Nenhum token encontrado, usuário precisa logar.");
+    }
+
+    // Busca produtos (agora protegido, mas o token já foi setado se existir)
     axios.get('http://localhost:3333/products')
       .then(response => setProducts(response.data))
-      .catch(error => console.error("Erro ao buscar produtos:", error));
+      .catch(error => {
+        console.error("Erro ao buscar produtos:", error);
+        // Se der erro 401 (não autorizado), desloga o usuário
+        if (error.response && error.response.status === 401) {
+          handleLogout();
+        }
+      });
 
     socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
     return () => { socket.off('new_order'); };
-  }, []);
+  }, []); // Roda apenas uma vez
 
+  // useEffect que busca dados da view atual
   useEffect(() => {
-    console.log("Mudando para a view:", currentView);
-    if (currentView === 'DASHBOARD') {
-      axios.get('http://localhost:3333/dashboard/today')
-        .then(response => setDashboardData(response.data))
-        .catch(error => console.error("Erro ao buscar dashboard:", error));
+    // Só busca dados se estiver autenticado E houver uma view
+    if (isAuthenticated && currentView) {
+      console.log(`[EFFECT 2] View mudou para: ${currentView}. Buscando dados...`);
+      switch (currentView) {
+        case 'DASHBOARD':
+          axios.get('http://localhost:3333/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro ao buscar dashboard:", error));
+          break;
+        case 'MANAGEMENT':
+          axios.get('http://localhost:3333/ingredients').then(response => {
+            setIngredients(response.data);
+            if(response.data.length > 0 && !selectedIngredientId) { setSelectedIngredientId(response.data[0].id); }
+          }).catch(error => console.error("Erro ao buscar ingredientes:", error));
+          axios.get('http://localhost:3333/products').then(response => setProducts(response.data)).catch(error => console.error("Erro ao buscar produtos (gestão):", error));
+          break;
+        case 'TABLE_SELECTION':
+          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro ao buscar mesas:", error));
+          break;
+        case 'FINANCIAL':
+          axios.get('http://localhost:3333/financial/transactions').then(response => setTransactions(response.data)).catch(error => console.error("Erro ao buscar transações:", error));
+          break;
+        default:
+          console.log(`[EFFECT 2] Nenhuma busca de dados específica para a view: ${currentView}`);
+      }
     }
-    if (currentView === 'MANAGEMENT') {
-      axios.get('http://localhost:3333/ingredients')
-        .then(response => {
-          setIngredients(response.data);
-          if (response.data.length > 0 && !selectedIngredientId) {
-            setSelectedIngredientId(response.data[0].id);
-          }
-        })
-        .catch(error => console.error("Erro ao buscar ingredientes:", error));
-      axios.get('http://localhost:3333/products')
-        .then(response => setProducts(response.data))
-        .catch(error => console.error("Erro ao buscar produtos (gestão):", error));
-    }
-    if (currentView === 'TABLE_SELECTION') {
-      axios.get('http://localhost:3333/tables')
-        .then(response => setTables(response.data))
-        .catch(error => console.error("Erro ao buscar mesas:", error));
-    }
-    if (currentView === 'FINANCIAL') {
-      axios.get('http://localhost:3333/financial/transactions')
-        .then(response => setTransactions(response.data))
-        .catch(error => console.error("Erro ao buscar transações:", error));
-    }
-  }, [currentView]);
+  }, [currentView, isAuthenticated]); // Adicionado isAuthenticated
 
 
-  // --- Funções --- (SEU CÓDIGO - SEM ALTERAÇÕES)
+  // --- Funções de Autenticação ✨ ---
+  async function handleLogin(event: FormEvent) {
+    event.preventDefault();
+    setAuthError('');
+    try {
+      const response = await axios.post('http://localhost:3333/auth/login', {
+        email: loginEmail,
+        password: loginPassword,
+      });
+      const { token } = response.data;
+      localStorage.setItem('authToken', token);
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error("Erro de login:", error);
+      setAuthError('Email ou senha inválidos. Tente novamente.');
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('authToken');
+    delete axios.defaults.headers.common['Authorization'];
+    setIsAuthenticated(false);
+  }
+
+  // --- Funções de Lógica de Negócio --- (COMPLETAS)
   function handleSelectTable(table: Table) { setSelectedTable(table); setCurrentView('ORDER'); }
   function handleGoBackToTables() { setSelectedTable(null); setOrderItems([]); setCurrentView('TABLE_SELECTION'); }
   function addProductToOrder(product: Product) {
@@ -141,20 +194,17 @@ function App() {
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
 
-  // --- Renderização --- (APENAS 'DASHBOARD' FOI ALTERADO)
+  // --- Renderização das Views --- (COMPLETAS)
   const renderView = () => {
     switch (currentView) {
-      // --- ✨ TELA DE DASHBOARD REFATORADA COM MANTINE ✨ ---
       case 'DASHBOARD':
         return (
           <Container size="lg" mt="md">
             <Title order={1} mb="xl">Dashboard - Vendas de Hoje</Title>
-            
-            {/* Indicadores em Cards */}
             <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
               <Paper shadow="xs" p="xl" withBorder radius="md">
                 <Title order={3} c="dimmed">Faturamento Total</Title>
-                <Text fz="xxl" fw={700} c="green"> {/* fz = font-size, fw = font-weight, c = color */}
+                <Text fz="xxl" fw={700} c="green">
                   R$ {parseFloat(String(dashboardData.totalRevenue || 0)).toFixed(2)}
                 </Text>
               </Paper>
@@ -165,8 +215,6 @@ function App() {
                 </Text>
               </Paper>
             </SimpleGrid>
-            
-            {/* Tabela de Produtos Mais Vendidos */}
             <Title order={2} mb="md">Top 5 Produtos Mais Vendidos</Title>
             <Table striped highlightOnHover withTableBorder withColumnBorders>
               <Table.Thead>
@@ -187,7 +235,6 @@ function App() {
           </Container>
         );
 
-      // TELA DE GESTÃO (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
       case 'MANAGEMENT':
         return (
           <Container size="lg" mt="md">
@@ -216,7 +263,6 @@ function App() {
           </Container>
         );
 
-      // TELA FINANCEIRA (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
       case 'FINANCIAL':
         return (
           <Container size="lg" mt="md">
@@ -241,7 +287,6 @@ function App() {
           </Container>
         );
 
-      // TELA DE COMANDA (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
       case 'ORDER':
         return (
           <Container size="lg" mt="md">
@@ -294,7 +339,6 @@ function App() {
           </Container>
         );
 
-      // TELA DE MESAS & KDS (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
       case 'TABLE_SELECTION':
       default:
         return (
@@ -330,8 +374,38 @@ function App() {
         );
     }
   };
+  
+  // --- ✨ RENDERIZAÇÃO PRINCIPAL (CONDICIONAL) ✨ ---
+  // Se não estiver autenticado, mostra a tela de Login
+  if (!isAuthenticated) {
+    return (
+      <Container size={420} my={40}>
+        <Title ta="center">Login - Meu PDV</Title>
+        <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleLogin}>
+          <Stack>
+            <TextInput
+              label="Email"
+              placeholder="seu@email.com"
+              value={loginEmail}
+              onChange={(event) => setLoginEmail(event.currentTarget.value)}
+              required
+            />
+            <PasswordInput
+              label="Senha"
+              placeholder="Sua senha"
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.currentTarget.value)}
+              required
+            />
+            {authError && <Text c="red" size="sm">{authError}</Text>}
+            <Button type="submit" mt="md">Entrar</Button>
+          </Stack>
+        </Paper>
+      </Container>
+    );
+  }
 
-  // --- ESTRUTURA PRINCIPAL COM APPSHELL --- (Sem alterações)
+  // Se ESTIVER autenticado, mostra o AppShell completo
   return (
     <AppShell padding="md" header={{ height: 60 }}>
       <AppShell.Header>
@@ -342,9 +416,11 @@ function App() {
             <Button variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dashboard</Button>
             <Button variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
             <Button variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Financeiro</Button>
+            <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button> {/* ✨ Botão de Logout ✨ */}
           </Group>
         </Group>
       </AppShell.Header>
+
       <AppShell.Main>
         <Container size="xl">
           {renderView()}
