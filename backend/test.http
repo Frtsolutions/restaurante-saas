@@ -1,19 +1,5 @@
-### 1. REGISTRAR O PRIMEIRO USUÁRIO (DONO)
-POST http://localhost:3333/auth/register
-Content-Type: application/json
+### 3. TESTAR ROTA PROTEGIDA (DASHBOARD) COM TOKEN
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI1NjlmOGE2Ny0yOTg5LTRkYWQtOWFkNS00M2ViMGQzMDg2ZTgiLCJyb2xlIjoiRE9OTyIsIm5hbWUiOiJEb25vIGRvIFJlc3RhdXJhbnRlIiwiaWF0IjoxNzYzMjQzMjMxLCJleHAiOjE3NjMzMjk2MzF9.ymIsZd3G3FGr3t6c34ycgHhm8hWLU8YhISysfCVSsCc
 
-{
-  "email": "dono@meupdv.com",
-  "name": "Dono do Restaurante",
-  "password": "senhaforte123",
-  "role": "DONO" 
-}
-
-### 2. FAZER LOGIN COM O USUÁRIO DONO
-POST http://localhost:3333/auth/login
-Content-Type: application/json
-
-{
-  "email": "dono@meupdv.com",
-  "password": "senhaforte123"
-}
+GET http://localhost:3333/dashboard/today
+Authorization: Bearer {{token}}

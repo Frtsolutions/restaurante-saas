@@ -1,10 +1,9 @@
-import express from 'express';
-import { PrismaClient } from '@prisma/client';
+import express, { Request, Response, NextFunction } from 'express'; // Importações atualizadas
+import { PrismaClient, Role } from '@prisma/client'; // Importado o Role
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
 import { Decimal } from '@prisma/client/runtime/library';
-// ✨ NOVAS IMPORTAÇÕES DE SEGURANÇA ✨
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -20,96 +19,114 @@ const io = new Server(server, {
 const prisma = new PrismaClient();
 const port = 3333;
 
-// ✨ CHAVE SECRETA PARA O TOKEN JWT ✨
-// (Em um projeto real, isso DEVE estar no seu arquivo .env!)
-const JWT_SECRET_KEY = "SEU_PROJETO_ESTA_FICANDO_INCRIVEL";
+const JWT_SECRET_KEY = "SEU_PROJETO_ESTA_FICANDO_INCRIVEL"; // Lembre-se de mover para .env
 
 // ==================================================================
-// ✨ NOVAS ROTAS DE AUTENTICAÇÃO ✨
+// ✨ INTERFACE DO TOKEN E EXTENSÃO DO EXPRESS ✨
+// ==================================================================
+interface TokenPayload {
+  userId: string;
+  role: Role;
+  name: string;
+  iat: number;
+  exp: number;
+}
+
+declare global {
+  namespace Express {
+    export interface Request {
+      user: TokenPayload;
+    }
+  }
+}
+
+// ==================================================================
+// ✨ MIDDLEWARES DE AUTENTICAÇÃO E AUTORIZAÇÃO ✨
 // ==================================================================
 
-// Rota para REGISTRAR um novo usuário
+// 1. Middleware de Autenticação (Verifica se está logado)
+const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ message: "Token não fornecido." });
+  }
+  const [, token] = authHeader.split(' ');
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET_KEY);
+    req.user = decoded as TokenPayload; 
+    return next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token inválido." });
+  }
+};
+
+// 2. Middleware de Autorização (Verifica o Nível de Acesso/Role)
+const checkRole = (roles: Role[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const userRole = req.user.role;
+    if (!roles.includes(userRole)) {
+      return res.status(403).json({ message: "Acesso negado: permissões insuficientes." });
+    }
+    return next();
+  };
+};
+
+// ==================================================================
+// ROTAS DE AUTENTICAÇÃO (Não protegidas)
+// ==================================================================
 app.post('/auth/register', async (request, response) => {
-  const { email, name, password, role } = request.body; // Role é opcional, pode ser DONO ou CAIXA
-
-  // 1. Criptografar a senha
+  const { email, name, password, role } = request.body;
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
-
   try {
-    // 2. Salvar o usuário no banco
     const user = await prisma.user.create({
       data: {
         email,
         name,
-        passwordHash, // Salva a senha criptografada
-        role: role || 'CAIXA' // Se nenhum role for passado, vira CAIXA
+        passwordHash,
+        role: role || 'CAIXA'
       }
     });
-
-    // 3. Remover o hash da senha antes de enviar a resposta
     const { passwordHash: _, ...userWithoutPassword } = user;
     return response.status(201).json(userWithoutPassword);
-
   } catch (error) {
     console.error(error);
-    // P1001 é erro de conexão, P2002 é erro de campo único (email já existe)
     return response.status(409).json({ message: "Email já cadastrado." });
   }
 });
 
-// Rota para FAZER LOGIN
 app.post('/auth/login', async (request, response) => {
   const { email, password } = request.body;
-
-  // 1. Encontrar o usuário pelo email
   const user = await prisma.user.findUnique({
     where: { email }
   });
-
   if (!user) {
     return response.status(404).json({ message: "Usuário não encontrado." });
   }
-
-  // 2. Comparar a senha enviada com o hash salvo no banco
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-
   if (!isPasswordValid) {
     return response.status(401).json({ message: "Senha inválida." });
   }
-
-  // 3. Gerar o Token JWT (JSON Web Token)
   const token = jwt.sign(
-    { 
-      userId: user.id, 
-      role: user.role,
-      name: user.name
-    },
+    { userId: user.id, role: user.role, name: user.name },
     JWT_SECRET_KEY,
-    { expiresIn: '1d' } // Token expira em 1 dia
+    { expiresIn: '1d' }
   );
-
-  // 4. Enviar o token e os dados do usuário (sem a senha)
   return response.status(200).json({
     token,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role
-    }
+    user: { id: user.id, name: user.name, email: user.email, role: user.role }
   });
 });
 
 // ==================================================================
-// ROTAS DE INGREDIENTES / INSUMOS (SEM ALTERAÇÕES)
+// ROTAS DE INGREDIENTES / INSUMOS (Protegidas - Apenas DONO)
 // ==================================================================
-app.get('/ingredients', async (request, response) => {
+app.get('/ingredients', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const ingredients = await prisma.ingredient.findMany({ orderBy: { name: 'asc' } });
   return response.json(ingredients);
 });
 
-app.post('/ingredients', async (request, response) => {
+app.post('/ingredients', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const { name, stockQuantity, unit } = request.body;
   try {
     const ingredient = await prisma.ingredient.create({
@@ -122,14 +139,14 @@ app.post('/ingredients', async (request, response) => {
 });
 
 // ==================================================================
-// ROTAS DE PRODUTOS (SEM ALTERAÇÕES)
+// ROTAS DE PRODUTOS (Protegidas)
 // ==================================================================
-app.get('/products', async (request, response) => {
+app.get('/products', authMiddleware, async (request, response) => {
   const products = await prisma.product.findMany({ orderBy: { name: 'asc' } });
   return response.status(200).json(products);
 });
 
-app.post('/products', async (request, response) => {
+app.post('/products', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const { name, price, recipeItems } = request.body;
   try {
     const product = await prisma.product.create({
@@ -151,14 +168,14 @@ app.post('/products', async (request, response) => {
 });
 
 // ==================================================================
-// ROTAS DE MESAS (SEM ALTERAÇÕES)
+// ROTAS DE MESAS (Protegidas)
 // ==================================================================
-app.get('/tables', async (request, response) => {
+app.get('/tables', authMiddleware, async (request, response) => {
   const tables = await prisma.table.findMany({ orderBy: { name: 'asc' } });
   return response.status(200).json(tables);
 });
 
-app.post('/tables', async (request, response) => {
+app.post('/tables', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const { name } = request.body;
   try {
     const table = await prisma.table.create({ data: { name } });
@@ -169,11 +186,13 @@ app.post('/tables', async (request, response) => {
 });
 
 // ==================================================================
-// ROTA DE PEDIDOS (SEM ALTERAÇÕES POR ENQUANTO)
+// ROTA DE PEDIDOS (Protegida e Atualizada)
 // ==================================================================
 type OrderItemInput = { productId: string; quantity: number; }
 
-app.post('/orders', async (request, response) => {
+app.post('/orders', authMiddleware, async (request: Request, response: Response) => {
+  const loggedInUserId = request.user.userId; // Pega o ID do usuário do token
+
   const { items, tableId } = request.body as { items: OrderItemInput[], tableId?: string };
 
   const productIds = items.map(item => item.productId);
@@ -216,8 +235,8 @@ app.post('/orders', async (request, response) => {
         data: {
           total,
           tableId,
+          userId: loggedInUserId, // ✨ ATUALIZAÇÃO: Salva o ID do usuário no pedido
           items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
-          // userId: "..." // No futuro, pegaremos o ID do usuário logado e salvaremos aqui
         },
         include: { items: { include: { product: true } } }
       }),
@@ -232,16 +251,16 @@ app.post('/orders', async (request, response) => {
 });
 
 // ==================================================================
-// ROTAS DO FINANCEIRO (SEM ALTERAÇÕES)
+// ROTAS DO FINANCEIRO (Protegidas - Apenas DONO)
 // ==================================================================
-app.get('/financial/transactions', async (request, response) => {
+app.get('/financial/transactions', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const transactions = await prisma.financialTransaction.findMany({
     orderBy: { createdAt: 'desc' }
   });
   return response.status(200).json(transactions);
 });
 
-app.post('/financial/transactions', async (request, response) => {
+app.post('/financial/transactions', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const { description, amount, type, dueDate } = request.body;
   try {
     const transaction = await prisma.financialTransaction.create({
@@ -260,9 +279,9 @@ app.post('/financial/transactions', async (request, response) => {
 });
 
 // ==================================================================
-// ROTA DE DASHBOARD (SEM ALTERAÇÕES)
+// ROTA DE DASHBOARD (Protegida - Apenas DONO)
 // ==================================================================
-app.get('/dashboard/today', async (request, response) => {
+app.get('/dashboard/today', authMiddleware, checkRole(['DONO']), async (request, response) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -301,7 +320,7 @@ app.get('/dashboard/today', async (request, response) => {
 });
 
 // ==================================================================
-// INICIA O SERVIDOR (SEM ALTERAÇÕES)
+// INICIA O SERVIDOR
 // ==================================================================
 server.listen(port, () => {
   console.log(`🚀 Servidor rodando na porta ${port}`);
