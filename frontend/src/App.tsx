@@ -2,13 +2,18 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// Importações do Mantine (Completas e Verificadas)
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor } from '@mantine/core';
+// ✨ Importações do Mantine (ADICIONADAS FileInput, Image, Box) ✨
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor, FileInput, Image, Box } from '@mantine/core';
 
 // ==================================================================
-// INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
+// INTERFACES (Product ATUALIZADA)
 // ==================================================================
-interface Product { id: string; name: string; price: string; }
+interface Product { 
+  id: string; 
+  name: string; 
+  price: string; 
+  imageUrl: string | null; // ✨ ADICIONADO
+}
 interface OrderItem extends Product { quantity: number; }
 interface FullOrder { id:string; total: number; createdAt: string; items: { id: string; quantity: number; product: Product; }[]; }
 interface DashboardData { totalRevenue: number; orderCount: number; topProducts: { productId: string; name: string; quantitySold: number; }[]; }
@@ -43,7 +48,7 @@ const socket = io('http://localhost:3333');
 // ==================================================================
 function App() {
   // --- Estados de Autenticação ---
-  const [appView, setAppView] = useState('LOGIN'); // LOGIN ou REGISTER
+  const [appView, setAppView] = useState('LOGIN');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<User['role'] | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
@@ -56,7 +61,7 @@ function App() {
 
   // --- Estados do App ---
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>([]); // Usa a nova interface Product
   const [tables, setTables] = useState<Table[]>([]);
   
   // --- Estados do PDV ---
@@ -80,6 +85,8 @@ function App() {
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState('');
   const [selectedIngredientQuantity, setSelectedIngredientQuantity] = useState('');
+  // ✨ NOVO ESTADO para o arquivo da imagem
+  const [newProductImage, setNewProductImage] = useState<File | null>(null);
 
   // --- Estados do Financeiro ---
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
@@ -88,16 +95,14 @@ function App() {
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
-  // --- ✨ NOVO ESTADO para a Gestão de Mesas ---
+  // --- NOVO ESTADO para a Gestão de Mesas ---
   const [newTableName, setNewTableName] = useState('');
 
 
   // --- Efeitos ---
-  // Verifica o token no localStorage ao carregar
   useEffect(() => {
     const token = localStorage.getItem('authToken');
     const userDataString = localStorage.getItem('userData');
-    
     if (token && userDataString) {
       console.log("Token e Usuário encontrados, configurando app...");
       const userData: User = JSON.parse(userDataString);
@@ -107,9 +112,8 @@ function App() {
     } else {
       console.log("Nenhum token/usuário encontrado, usuário precisa logar.");
     }
-  }, []); // Roda apenas uma vez
+  }, []);
 
-  // Busca produtos (agora é protegido, então só roda se autenticado)
   useEffect(() => {
     if (isAuthenticated) {
       axios.get('http://localhost:3333/products')
@@ -118,13 +122,11 @@ function App() {
           console.error("Erro ao buscar produtos:", error);
           if (error.response && error.response.status === 401) handleLogout();
         });
-
       socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
     }
     return () => { socket.off('new_order'); };
-  }, [isAuthenticated]); // Roda quando autentica
+  }, [isAuthenticated]);
 
-  // Busca dados da view atual
   useEffect(() => {
     if (isAuthenticated && currentView) {
       console.log(`[EFFECT 2] View mudou para: ${currentView}. Buscando dados...`);
@@ -133,28 +135,24 @@ function App() {
         setCurrentView('TABLE_SELECTION');
         return;
       }
-      
       switch (currentView) {
         case 'DASHBOARD':
-          axios.get('http://localhost:3333/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro ao buscar dashboard:", error));
+          axios.get('http://localhost:3333/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro...", error));
           break;
         case 'MANAGEMENT':
           axios.get('http://localhost:3333/ingredients').then(response => {
             setIngredients(response.data);
             if(response.data.length > 0 && !selectedIngredientId) { setSelectedIngredientId(response.data[0].id); }
-          }).catch(error => console.error("Erro ao buscar ingredientes:", error));
-          axios.get('http://localhost:3333/products').then(response => setProducts(response.data)).catch(error => console.error("Erro ao buscar produtos (gestão):", error));
-          // ✨ ADICIONADO: Busca mesas também na tela de gestão
-          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro ao buscar mesas (gestão):", error));
+          }).catch(error => console.error("Erro...", error));
+          axios.get('http://localhost:3333/products').then(response => setProducts(response.data)).catch(error => console.error("Erro...", error));
+          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
           break;
         case 'TABLE_SELECTION':
-          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro ao buscar mesas:", error));
+          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
           break;
         case 'FINANCIAL':
-          axios.get('http://localhost:3333/financial/transactions').then(response => setTransactions(response.data)).catch(error => console.error("Erro ao buscar transações:", error));
+          axios.get('http://localhost:3333/financial/transactions').then(response => setTransactions(response.data)).catch(error => console.error("Erro...", error));
           break;
-        default:
-          console.log(`[EFFECT 2] Nenhuma busca de dados específica para a view: ${currentView}`);
       }
     }
   }, [currentView, isAuthenticated, userRole, selectedIngredientId]);
@@ -165,10 +163,7 @@ function App() {
     event.preventDefault();
     setAuthError('');
     try {
-      const response = await axios.post('http://localhost:3333/auth/login', {
-        email: loginEmail,
-        password: loginPassword,
-      });
+      const response = await axios.post('http://localhost:3333/auth/login', { email: loginEmail, password: loginPassword });
       const { token, user } = response.data;
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(user));
@@ -184,18 +179,10 @@ function App() {
   async function handleRegister(event: FormEvent) {
     event.preventDefault();
     setAuthError('');
-    const payload = {
-      email: registerEmail,
-      name: registerName,
-      password: registerPassword,
-      companyName: registerCompanyName
-    };
+    const payload = { email: registerEmail, name: registerName, password: registerPassword, companyName: registerCompanyName };
     try {
       await axios.post('http://localhost:3333/auth/register', payload);
-      const loginResponse = await axios.post('http://localhost:3333/auth/login', {
-        email: registerEmail,
-        password: registerPassword,
-      });
+      const loginResponse = await axios.post('http://localhost:3333/auth/login', { email: registerEmail, password: registerPassword });
       const { token, user } = loginResponse.data;
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(user));
@@ -245,20 +232,65 @@ function App() {
     const ingredient = ingredients.find(ing => ing.id === selectedIngredientId);
     if (ingredient) { setRecipeItems([...recipeItems, { ingredientId: ingredient.id, name: ingredient.name, quantity: selectedIngredientQuantity }]); setSelectedIngredientQuantity(''); }
   }
+  
+  // --- ✨ FUNÇÃO DE CRIAR PRODUTO ATUALIZADA ✨ ---
   async function handleCreateProduct(event: FormEvent) {
-    event.preventDefault(); if (!newProductName || !newProductPrice) { alert('Preencha nome/preço.'); return; }
-    const payload = { name: newProductName, price: parseFloat(newProductPrice), recipeItems: recipeItems.map(item => ({ ingredientId: item.ingredientId, quantity: parseFloat(item.quantity) })) };
-    try { const response = await axios.post('http://localhost:3333/products', payload); setProducts([...products, response.data]); setNewProductName(''); setNewProductPrice(''); setRecipeItems([]); alert('Produto criado!'); }
-    catch (error) { console.error('Erro...', error); alert('Erro...'); }
+    event.preventDefault();
+    if (!newProductName || !newProductPrice) {
+      alert('Preencha o nome e o preço do produto.');
+      return;
+    }
+    
+    // Etapa 1: Criar o produto (sem imagem)
+    const productPayload = {
+      name: newProductName,
+      price: parseFloat(newProductPrice),
+      recipeItems: recipeItems.map(item => ({
+        ingredientId: item.ingredientId,
+        quantity: parseFloat(item.quantity)
+      }))
+    };
+
+    try {
+      const productResponse = await axios.post('http://localhost:3333/products', productPayload);
+      let newProduct: Product = productResponse.data;
+      
+      // Etapa 2: Se uma imagem foi selecionada, faz o upload
+      if (newProductImage) {
+        const formData = new FormData();
+        formData.append('image', newProductImage); // 'image' é o nome do campo
+
+        const uploadResponse = await axios.post(
+          `http://localhost:3333/products/${newProduct.id}/upload`,
+          formData,
+          { headers: { 'Content-Type': 'multipart/form-data' } }
+        );
+        newProduct = uploadResponse.data; // Pega a versão final do produto com a URL da imagem
+      }
+
+      // 3. Atualiza a lista de produtos no frontend
+      setProducts(prevProducts => [...prevProducts, newProduct]);
+      
+      // 4. Limpa o formulário
+      setNewProductName('');
+      setNewProductPrice('');
+      setRecipeItems([]);
+      setNewProductImage(null); // Limpa o arquivo de imagem
+      
+      alert('Produto criado com sucesso!');
+
+    } catch (error) {
+      console.error('Erro ao criar produto ou fazer upload:', error);
+      alert('Erro ao criar produto.');
+    }
   }
+
   async function handleCreateTransaction(event: FormEvent) {
     event.preventDefault(); if (!newTransactionDesc || !newTransactionAmount) { alert('Preencha desc/valor.'); return; }
     const payload = { description: newTransactionDesc, amount: parseFloat(newTransactionAmount), type: newTransactionType, dueDate: newTransactionDueDate || null };
     try { const response = await axios.post('http://localhost:3333/financial/transactions', payload); setTransactions([response.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionType('DESPESA'); setNewTransactionDueDate(''); alert('Transação registrada!'); }
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
-
-  // --- ✨ NOVA FUNÇÃO: Criar uma Mesa ---
   async function handleCreateTable(event: FormEvent) {
     event.preventDefault();
     if (!newTableName) {
@@ -267,8 +299,8 @@ function App() {
     }
     try {
       const response = await axios.post('http://localhost:3333/tables', { name: newTableName });
-      setTables([...tables, response.data]); // Adiciona a nova mesa à lista
-      setNewTableName(''); // Limpa o formulário
+      setTables([...tables, response.data]);
+      setNewTableName('');
       alert('Mesa criada com sucesso!');
     } catch (error: any) {
       console.error("Erro ao criar mesa:", error);
@@ -280,7 +312,7 @@ function App() {
     }
   }
 
-  // --- Renderização --- (COMPLETA)
+  // --- Renderização --- (COMPLETA, COM MUDANÇAS EM 'MANAGEMENT' E 'ORDER')
   const renderView = () => {
     switch (currentView) {
       case 'DASHBOARD':
@@ -321,21 +353,18 @@ function App() {
           </Container>
         );
 
-      // ✨ TELA DE GESTÃO ATUALIZADA COM A ABA "MESAS" ✨
       case 'MANAGEMENT':
         return (
           <Container size="lg" mt="md">
             <Title order={1} mb="xl">Gestão</Title>
-            
             <Tabs value={managementSubView} onChange={setManagementSubView}>
               <Tabs.List grow>
                 <Tabs.Tab value="insumos">Gestão de Insumos</Tabs.Tab>
                 <Tabs.Tab value="produtos">Gestão de Produtos</Tabs.Tab>
-                {/* ✨ NOVA ABA DE MESAS ✨ */}
                 <Tabs.Tab value="mesas">Gestão de Mesas</Tabs.Tab>
               </Tabs.List>
 
-              {/* Painel da Aba Insumos */}
+              {/* Painel Insumos */}
               <Tabs.Panel value="insumos" pt="lg">
                 <Title order={2} mb="lg">Gestão de Estoque - Insumos</Title>
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateIngredient}>
@@ -346,50 +375,79 @@ function App() {
                 <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Estoque Atual</Table.Th> <Table.Th>Unidade</Table.Th> </Table.Tr> </Table.Thead> <Table.Tbody>{ingredients.map(ing => ( <Table.Tr key={ing.id}> <Table.Td>{ing.name}</Table.Td> <Table.Td>{parseFloat(String(ing.stockQuantity) || '0').toFixed(2)}</Table.Td> <Table.Td>{ing.unit}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
               </Tabs.Panel>
 
-              {/* Painel da Aba Produtos */}
+              {/* ✨ Painel Produtos (ATUALIZADO) ✨ */}
               <Tabs.Panel value="produtos" pt="lg">
                  <Title order={2} mb="lg">Gestão de Produtos</Title>
                  <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateProduct}>
                    <Title order={3} mb="md">Adicionar Novo Produto</Title>
-                   <Stack> <TextInput label="Nome do Produto" value={newProductName} onChange={(event) => setNewProductName(event.currentTarget.value)} required /> <NumberInput label="Preço de Venda (R$)" value={newProductPrice} onChange={(value) => setNewProductPrice(String(value))} min={0} step={0.01} decimalScale={2} required prefix="R$ " /> <Title order={4} mt="md">Ficha Técnica (Receita)</Title> <Paper p="sm" withBorder style={{ background: '#f9f9f9' }}> <Group grow align='flex-end'> <Select label="Ingrediente" placeholder="Selecione..." value={selectedIngredientId} onChange={(value) => setSelectedIngredientId(value || '')} data={ingredients.map(ing => ({ value: ing.id, label: `${ing.name} (${ing.unit})` }))} searchable clearable nothingFoundMessage="Nenhum ingrediente encontrado" /> <NumberInput label="Quantidade" value={selectedIngredientQuantity} onChange={(value) => setSelectedIngredientQuantity(String(value))} min={0} step={0.01} decimalScale={2} /> <Button onClick={handleAddIngredientToRecipe} variant="outline">Adicionar</Button> </Group> </Paper> <Paper p="xs" mt="xs">{recipeItems.length === 0 && <span style={{color: 'grey'}}>Nenhum ingrediente adicionado</span>}<ul>{recipeItems.map((item, index) => <li key={index}>{item.name} - {item.quantity} {ingredients.find(ing => ing.id === item.ingredientId)?.unit}</li>)}</ul></Paper> <Button type="submit" mt="md" color="green">Salvar Novo Produto</Button> </Stack>
+                   <Stack>
+                     <TextInput label="Nome do Produto" value={newProductName} onChange={(event) => setNewProductName(event.currentTarget.value)} required />
+                     <NumberInput label="Preço de Venda (R$)" value={newProductPrice} onChange={(value) => setNewProductPrice(String(value))} min={0} step={0.01} decimalScale={2} required prefix="R$ " />
+                     
+                     {/* ✨ ADICIONADO: Campo de Upload de Imagem ✨ */}
+                     <FileInput
+                        label="Imagem do Produto (Opcional)"
+                        placeholder="Clique para selecionar uma imagem"
+                        value={newProductImage}
+                        onChange={setNewProductImage}
+                        accept="image/png,image/jpeg"
+                      />
+                     
+                     <Title order={4} mt="md">Ficha Técnica (Receita)</Title>
+                     <Paper p="sm" withBorder style={{ background: '#f9f9f9' }}>
+                       <Group grow align='flex-end'>
+                         <Select label="Ingrediente" placeholder="Selecione..." value={selectedIngredientId} onChange={(value) => setSelectedIngredientId(value || '')} data={ingredients.map(ing => ({ value: ing.id, label: `${ing.name} (${ing.unit})` }))} searchable clearable nothingFoundMessage="Nenhum ingrediente encontrado" />
+                         <NumberInput label="Quantidade" value={selectedIngredientQuantity} onChange={(value) => setSelectedIngredientQuantity(String(value))} min={0} step={0.01} decimalScale={2} />
+                         <Button onClick={handleAddIngredientToRecipe} variant="outline">Adicionar</Button>
+                       </Group>
+                     </Paper>
+                     <Paper p="xs" mt="xs">{recipeItems.length === 0 && <span style={{color: 'grey'}}>Nenhum ingrediente adicionado</span>}<ul>{recipeItems.map((item, index) => <li key={index}>{item.name} - {item.quantity} {ingredients.find(ing => ing.id === item.ingredientId)?.unit}</li>)}</ul></Paper>
+                     <Button type="submit" mt="md" color="green">Salvar Novo Produto</Button>
+                   </Stack>
                  </Paper>
+                 
                  <Title order={2} mb="md">Produtos Cadastrados</Title>
-                 <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Preço (R$)</Table.Th> </Table.Tr> </Table.Thead> <Table.Tbody>{products.map(p => ( <Table.Tr key={p.id}> <Table.Td>{p.name}</Table.Td> <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
+                 {/* ✨ TABELA DE PRODUTOS ATUALIZADA COM IMAGEM ✨ */}
+                 <Table striped highlightOnHover withTableBorder withColumnBorders>
+                   <Table.Thead>
+                     <Table.Tr>
+                       <Table.Th style={{ width: 60 }}>Imagem</Table.Th>
+                       <Table.Th>Nome</Table.Th>
+                       <Table.Th>Preço (R$)</Table.Th>
+                     </Table.Tr>
+                   </Table.Thead>
+                   <Table.Tbody>
+                    {products.map(p => (
+                      <Table.Tr key={p.id}>
+                        <Table.Td>
+                          <Image
+                            src={p.imageUrl || 'https://via.placeholder.com/40'} // Imagem padrão
+                            alt={p.name}
+                            h={40} w={40} fit="cover" radius="sm"
+                          />
+                        </Table.Td>
+                        <Table.Td>{p.name}</Table.Td>
+                        <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                   </Table.Tbody>
+                 </Table>
               </Tabs.Panel>
               
-              {/* --- ✨ NOVO PAINEL DE MESAS ✨ --- */}
+              {/* Painel Mesas */}
               <Tabs.Panel value="mesas" pt="lg">
                 <Title order={2} mb="lg">Gestão de Mesas</Title>
-                
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateTable}>
                   <Title order={3} mb="md">Adicionar Nova Mesa</Title>
                   <Group align="flex-end">
-                    <TextInput
-                      label="Nome da Mesa"
-                      placeholder="Ex: Mesa 01, Balcão 02"
-                      value={newTableName}
-                      onChange={(event) => setNewTableName(event.currentTarget.value)}
-                      required
-                      style={{ flex: 1 }}
-                    />
+                    <TextInput label="Nome da Mesa" placeholder="Ex: Mesa 01, Balcão 02" value={newTableName} onChange={(event) => setNewTableName(event.currentTarget.value)} required style={{ flex: 1 }} />
                     <Button type="submit">Adicionar Mesa</Button>
                   </Group>
                 </Paper>
-                
                 <Title order={2} mb="md">Mesas Cadastradas</Title>
                 <Table striped highlightOnHover withTableBorder withColumnBorders>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Nome da Mesa</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {tables.map(table => (
-                      <Table.Tr key={table.id}>
-                        <Table.Td>{table.name}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
+                  <Table.Thead> <Table.Tr> <Table.Th>Nome da Mesa</Table.Th> </Table.Tr> </Table.Thead>
+                  <Table.Tbody>{tables.map(table => ( <Table.Tr key={table.id}> <Table.Td>{table.name}</Table.Td> </Table.Tr> ))}</Table.Tbody>
                 </Table>
               </Tabs.Panel>
             </Tabs>
@@ -420,6 +478,7 @@ function App() {
           </Container>
         );
 
+      // ✨ TELA DE COMANDA ATUALIZADA COM IMAGEM ✨
       case 'ORDER':
         return (
           <Container size="lg" mt="md">
@@ -434,15 +493,26 @@ function App() {
                   <Stack gap="sm">
                     {products.map(p => (
                       <Paper key={p.id} shadow="xs" p="md" withBorder onClick={() => addProductToOrder(p)} style={{ cursor: 'pointer' }}>
-                        <Group justify="space-between">
-                          <Text fw={500}>{p.name}</Text>
-                          <Text>R$ {parseFloat(p.price).toFixed(2)}</Text>
+                        {/* ✨ ADICIONADO GRUPO COM IMAGEM ✨ */}
+                        <Group>
+                          <Image
+                            src={p.imageUrl || 'https://via.placeholder.com/40'}
+                            alt={p.name}
+                            h={40} w={40} fit="cover" radius="sm"
+                          />
+                          <Box style={{flex: 1}}>
+                            <Group justify="space-between">
+                              <Text fw={500}>{p.name}</Text>
+                              <Text>R$ {parseFloat(p.price).toFixed(2)}</Text>
+                            </Group>
+                          </Box>
                         </Group>
                       </Paper>
                     ))}
                   </Stack>
                 </ScrollArea>
               </Grid.Col>
+              {/* Coluna da Comanda */}
               <Grid.Col span={{ base: 12, md: 5 }}>
                 <Paper shadow="xs" p="md" withBorder>
                   <Title order={2} mb="md">Itens</Title>
