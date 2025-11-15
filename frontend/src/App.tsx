@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// ✨ Importações do Mantine (ADICIONADAS as necessárias para o Financeiro) ✨
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper } from '@mantine/core'; // Adicionado Container, Title, Paper, Stack, TextInput, NumberInput, Select, Table
+// ✨ Importações do Mantine (SEU CÓDIGO - SEM ALTERAÇÕES) ✨
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper } from '@mantine/core';
+
 
 // ==================================================================
 // INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -59,82 +60,50 @@ function App() {
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
-  // --- Efeitos --- (SEU CÓDIGO COM LOGS - SEM ALTERAÇÕES)
+  // --- Efeitos --- (SEU CÓDIGO - SEM ALTERAÇÕES)
   useEffect(() => {
-    console.log("[EFFECT 1] Buscando produtos na montagem inicial...");
+    // Busca produtos essenciais na montagem inicial
     axios.get('http://localhost:3333/products')
-      .then(response => {
-        console.log("[EFFECT 1] Produtos recebidos:", response.data.length);
-        setProducts(response.data);
-      })
-      .catch(error => console.error("[EFFECT 1] ERRO ao buscar produtos:", error));
+      .then(response => setProducts(response.data))
+      .catch(error => console.error("Erro ao buscar produtos:", error)); // Log de erro
 
-    console.log("[EFFECT 1] Configurando listener do Socket.IO...");
-    socket.on('new_order', (newOrder: FullOrder) => {
-        console.log("[SOCKET] Novo pedido recebido:", newOrder.id);
-        setKdsOrders(prevOrders => [newOrder, ...prevOrders]);
-    });
+    // Configura o socket.io
+    socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
+    return () => { socket.off('new_order'); };
+  }, []); // Roda apenas uma vez
 
-    return () => {
-        console.log("[EFFECT 1] Limpando listener do Socket.IO.");
-        socket.off('new_order');
-    };
-  }, []);
-
+  // Busca dados específicos da TELA ATUAL sempre que a 'currentView' mudar
   useEffect(() => {
-    console.log(`[EFFECT 2] View mudou para: ${currentView}. Buscando dados...`);
-    switch (currentView) {
-      case 'DASHBOARD':
-        axios.get('http://localhost:3333/dashboard/today')
-          .then(response => {
-            console.log("[EFFECT 2] Dados do Dashboard recebidos:", response.data);
-            setDashboardData(response.data);
-          })
-          .catch(error => console.error("[EFFECT 2] ERRO ao buscar dashboard:", error));
-        break;
-      case 'MANAGEMENT':
-        console.log("[EFFECT 2] Buscando Ingredientes para Gestão...");
-        axios.get('http://localhost:3333/ingredients')
-          .then(response => {
-            console.log("[EFFECT 2] Ingredientes recebidos:", response.data.length);
-            setIngredients(response.data);
-            if (response.data.length > 0 && !selectedIngredientId) {
-              console.log("[EFFECT 2] Definindo ingrediente padrão selecionado.");
-              setSelectedIngredientId(response.data[0].id);
-            }
-          })
-          .catch(error => console.error("[EFFECT 2] ERRO ao buscar ingredientes:", error));
-
-        console.log("[EFFECT 2] Buscando Produtos para Gestão...");
-        axios.get('http://localhost:3333/products')
-          .then(response => {
-            console.log("[EFFECT 2] Produtos (gestão) recebidos:", response.data.length);
-            setProducts(response.data);
-          })
-          .catch(error => console.error("[EFFECT 2] ERRO ao buscar produtos (gestão):", error));
-        break;
-      case 'TABLE_SELECTION':
-        console.log("[EFFECT 2] Buscando Mesas...");
-        axios.get('http://localhost:3333/tables')
-          .then(response => {
-            console.log("[EFFECT 2] Mesas recebidas:", response.data.length);
-            setTables(response.data);
-          })
-          .catch(error => console.error("[EFFECT 2] ERRO ao buscar mesas:", error));
-        break;
-      case 'FINANCIAL':
-        console.log("[EFFECT 2] Buscando Transações Financeiras...");
-        axios.get('http://localhost:3333/financial/transactions')
-          .then(response => {
-            console.log("[EFFECT 2] Transações recebidas:", response.data.length);
-            setTransactions(response.data);
-          })
-          .catch(error => console.error("[EFFECT 2] ERRO ao buscar transações:", error));
-        break;
-      default:
-        console.log(`[EFFECT 2] Nenhuma busca de dados específica para a view: ${currentView}`);
+    console.log("Mudando para a view:", currentView); // Log para depuração
+    if (currentView === 'DASHBOARD') {
+      axios.get('http://localhost:3333/dashboard/today')
+        .then(response => setDashboardData(response.data))
+        .catch(error => console.error("Erro ao buscar dashboard:", error)); // Log de erro
     }
-  }, [currentView]);
+    if (currentView === 'MANAGEMENT') {
+      axios.get('http://localhost:3333/ingredients')
+        .then(response => {
+          setIngredients(response.data);
+          if (response.data.length > 0 && !selectedIngredientId) {
+            setSelectedIngredientId(response.data[0].id);
+          }
+        })
+        .catch(error => console.error("Erro ao buscar ingredientes:", error)); // Log de erro
+      axios.get('http://localhost:3333/products') // Busca produtos novamente aqui se necessário para a gestão
+        .then(response => setProducts(response.data))
+        .catch(error => console.error("Erro ao buscar produtos (gestão):", error)); // Log de erro
+    }
+    if (currentView === 'TABLE_SELECTION') {
+      axios.get('http://localhost:3333/tables')
+        .then(response => setTables(response.data))
+        .catch(error => console.error("Erro ao buscar mesas:", error)); // Log de erro
+    }
+    if (currentView === 'FINANCIAL') {
+      axios.get('http://localhost:3333/financial/transactions')
+        .then(response => setTransactions(response.data))
+        .catch(error => console.error("Erro ao buscar transações:", error)); // Log de erro
+    }
+  }, [currentView]); // A ÚNICA dependência DEVE ser currentView
 
 
   // --- Funções --- (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -175,7 +144,7 @@ function App() {
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
 
-  // --- Renderização --- (APENAS 'FINANCIAL' FOI ALTERADO)
+  // --- Renderização --- (✨ APENAS 'FINANCIAL' FOI ALTERADO ✨)
   const renderView = () => {
     switch (currentView) {
       // TELA DE DASHBOARD (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
@@ -199,7 +168,7 @@ function App() {
             </div>
           </div>
         );
-
+      
       // TELA DE GESTÃO (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
       case 'MANAGEMENT':
         return (
@@ -241,13 +210,12 @@ function App() {
       // --- ✨ TELA FINANCEIRA REFATORADA COM MANTINE ✨ ---
       case 'FINANCIAL':
         return (
-          <Container size="lg" mt="md"> {/* Usando Container Mantine */}
+          <Container size="lg" mt="md">
             <Title order={1} mb="xl">Financeiro - Contas a Pagar/Receber</Title>
 
-            {/* Formulário de Nova Transação */}
             <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateTransaction}>
               <Title order={3} mb="md">Registrar Nova Transação</Title>
-              <Stack> {/* Empilha os inputs */}
+              <Stack>
                 <TextInput
                   label="Descrição"
                   placeholder="Ex: Aluguel, Compra de Mercadoria"
@@ -255,12 +223,12 @@ function App() {
                   onChange={(event) => setNewTransactionDesc(event.currentTarget.value)}
                   required
                 />
-                <Group grow> {/* Agrupa Valor, Tipo e Data */}
+                <Group grow>
                   <NumberInput
                     label="Valor (R$)"
                     placeholder="Ex: 150.50"
                     value={newTransactionAmount}
-                    onChange={(value) => setNewTransactionAmount(String(value))}
+                    onChange={(value) => setNewTransactionAmount(String(value))} // Mantine usa string ou number
                     min={0}
                     step={0.01}
                     decimalScale={2}
@@ -278,7 +246,7 @@ function App() {
                     required
                     allowDeselect={false}
                   />
-                   {/* Mantendo o input date nativo por simplicidade */}
+                   {/* Usando TextInput com type="date" para simplicidade, como no seu código original */}
                    <TextInput
                       type='date'
                       label="Data de Vencimento (Opcional)"
@@ -290,7 +258,6 @@ function App() {
               </Stack>
             </Paper>
 
-            {/* Tabela de Histórico */}
             <Title order={2} mb="md">Histórico de Transações</Title>
             <Table striped highlightOnHover withTableBorder withColumnBorders>
               <Table.Thead>
@@ -368,7 +335,7 @@ function App() {
     }
   };
 
-  // --- ESTRUTURA PRINCIPAL COM APPSHELL --- (Sem alterações)
+  // --- ESTRUTURA PRINCIPAL COM APPSHELL --- (SEU CÓDIGO - SEM ALTERAÇÕES)
   return (
     <AppShell padding="md" header={{ height: 60 }}>
       <AppShell.Header>
