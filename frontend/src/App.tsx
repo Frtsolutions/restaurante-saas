@@ -6,7 +6,7 @@ import { io } from 'socket.io-client';
 import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput } from '@mantine/core';
 
 // ==================================================================
-// INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
+// INTERFACES (Com adição da User)
 // ==================================================================
 interface Product { id: string; name: string; price: string; }
 interface OrderItem extends Product { quantity: number; }
@@ -28,6 +28,13 @@ interface RecipeItemForm {
   name: string;
   quantity: string;
 }
+// ✨ NOVO: Interface para o Usuário
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'DONO' | 'CAIXA'; // Define os papéis
+}
 
 const socket = io('http://localhost:3333');
 
@@ -37,6 +44,7 @@ const socket = io('http://localhost:3333');
 function App() {
   // --- Estados de Autenticação ✨ ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<User['role'] | null>(null); // ✨ NOVO ESTADO
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -76,15 +84,20 @@ function App() {
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
   // --- Efeitos ---
-  // ✨ NOVO: useEffect para verificar o token no localStorage ao carregar ✨
+  // ✨ ATUALIZADO: useEffect para carregar token E dados do usuário ✨
   useEffect(() => {
     const token = localStorage.getItem('authToken');
-    if (token) {
-      console.log("Token encontrado no localStorage, configurando axios...");
+    const userDataString = localStorage.getItem('userData');
+    
+    if (token && userDataString) {
+      console.log("Token e Usuário encontrados, configurando app...");
+      const userData: User = JSON.parse(userDataString);
+      
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setUserRole(userData.role);
       setIsAuthenticated(true);
     } else {
-      console.log("Nenhum token encontrado, usuário precisa logar.");
+      console.log("Nenhum token/usuário encontrado, usuário precisa logar.");
     }
 
     // Busca produtos (agora protegido, mas o token já foi setado se existir)
@@ -92,9 +105,8 @@ function App() {
       .then(response => setProducts(response.data))
       .catch(error => {
         console.error("Erro ao buscar produtos:", error);
-        // Se der erro 401 (não autorizado), desloga o usuário
         if (error.response && error.response.status === 401) {
-          handleLogout();
+          handleLogout(); // Desloga se o token for inválido
         }
       });
 
@@ -104,9 +116,16 @@ function App() {
 
   // useEffect que busca dados da view atual
   useEffect(() => {
-    // Só busca dados se estiver autenticado E houver uma view
     if (isAuthenticated && currentView) {
       console.log(`[EFFECT 2] View mudou para: ${currentView}. Buscando dados...`);
+      
+      // Evita que o CAIXA tente buscar dados que não pode
+      if (userRole === 'CAIXA' && (currentView === 'DASHBOARD' || currentView === 'MANAGEMENT' || currentView === 'FINANCIAL')) {
+        console.warn(`[EFFECT 2] CAIXA tentou acessar view ${currentView}. Redirecionando.`);
+        setCurrentView('TABLE_SELECTION'); // Redireciona para o PDV
+        return; // Para a execução
+      }
+      
       switch (currentView) {
         case 'DASHBOARD':
           axios.get('http://localhost:3333/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro ao buscar dashboard:", error));
@@ -128,7 +147,7 @@ function App() {
           console.log(`[EFFECT 2] Nenhuma busca de dados específica para a view: ${currentView}`);
       }
     }
-  }, [currentView, isAuthenticated]); // Adicionado isAuthenticated
+  }, [currentView, isAuthenticated, userRole]); // Adicionado userRole
 
 
   // --- Funções de Autenticação ✨ ---
@@ -140,9 +159,11 @@ function App() {
         email: loginEmail,
         password: loginPassword,
       });
-      const { token } = response.data;
+      const { token, user } = response.data;
       localStorage.setItem('authToken', token);
+      localStorage.setItem('userData', JSON.stringify(user)); // ✨ Salva o usuário
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      setUserRole(user.role); // ✨ Salva o role
       setIsAuthenticated(true);
     } catch (error) {
       console.error("Erro de login:", error);
@@ -152,8 +173,10 @@ function App() {
 
   function handleLogout() {
     localStorage.removeItem('authToken');
+    localStorage.removeItem('userData'); // ✨ Limpa o usuário
     delete axios.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
+    setUserRole(null); // ✨ Limpa o role
   }
 
   // --- Funções de Lógica de Negócio --- (COMPLETAS)
@@ -412,11 +435,20 @@ function App() {
         <Group h="100%" px="md">
           <Title order={3}>Meu PDV</Title>
           <Group justify="flex-end" style={{ flex: 1 }}>
+            
+            {/* Botão do PDV (Todos veem) */}
             <Button variant={currentView.includes('TABLE') || currentView.includes('ORDER') ? 'filled' : 'subtle'} onClick={() => setCurrentView('TABLE_SELECTION')}>Mesas & PDV</Button>
-            <Button variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dashboard</Button>
-            <Button variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
-            <Button variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Financeiro</Button>
-            <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button> {/* ✨ Botão de Logout ✨ */}
+            
+            {/* ✨ CONDIÇÃO: Apenas 'DONO' vê os botões de gestão ✨ */}
+            {userRole === 'DONO' && (
+              <>
+                <Button variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dashboard</Button>
+                <Button variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
+                <Button variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Financeiro</Button>
+              </>
+            )}
+            
+            <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button>
           </Group>
         </Group>
       </AppShell.Header>
