@@ -3,3 +3,6 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# Ignorar a pasta de build do backend
+/backend/dist/

@@ -2,18 +2,14 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// ✨ Importações do Mantine (ADICIONADAS FileInput, Image, Box) ✨
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor, FileInput, Image, Box } from '@mantine/core';
+// Importações do Mantine (Completas)
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor, FileInput, Image, Box, Drawer, Affix } from '@mantine/core';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 
 // ==================================================================
-// INTERFACES (Product ATUALIZADA)
+// INTERFACES
 // ==================================================================
-interface Product { 
-  id: string; 
-  name: string; 
-  price: string; 
-  imageUrl: string | null; // ✨ ADICIONADO
-}
+interface Product { id: string; name: string; price: string; imageUrl: string | null; }
 interface OrderItem extends Product { quantity: number; }
 interface FullOrder { id:string; total: number; createdAt: string; items: { id: string; quantity: number; product: Product; }[]; }
 interface DashboardData { totalRevenue: number; orderCount: number; topProducts: { productId: string; name: string; quantitySold: number; }[]; }
@@ -61,7 +57,7 @@ function App() {
 
   // --- Estados do App ---
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
-  const [products, setProducts] = useState<Product[]>([]); // Usa a nova interface Product
+  const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   
   // --- Estados do PDV ---
@@ -85,7 +81,7 @@ function App() {
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState('');
   const [selectedIngredientQuantity, setSelectedIngredientQuantity] = useState('');
-  // ✨ NOVO ESTADO para o arquivo da imagem
+  // ✨ ESTADO FALTANTE ADICIONADO ✨
   const [newProductImage, setNewProductImage] = useState<File | null>(null);
 
   // --- Estados do Financeiro ---
@@ -95,9 +91,12 @@ function App() {
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
 
-  // --- NOVO ESTADO para a Gestão de Mesas ---
+  // --- Estado da Gestão de Mesas ---
   const [newTableName, setNewTableName] = useState('');
-
+  
+  // --- Hooks para UI Responsiva ---
+  const [cartDrawerOpen, { open: openCart, close: closeCart }] = useDisclosure(false);
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   // --- Efeitos ---
   useEffect(() => {
@@ -155,7 +154,8 @@ function App() {
           break;
       }
     }
-  }, [currentView, isAuthenticated, userRole, selectedIngredientId]);
+  // ✨ CORREÇÃO: Removido 'selectedIngredientId' da lista de dependências
+  }, [currentView, isAuthenticated, userRole]);
 
 
   // --- Funções de Autenticação ---
@@ -216,11 +216,20 @@ function App() {
     else { setOrderItems([...orderItems, { ...product, quantity: 1 }]); }
   }
   const calculateTotal = () => orderItems.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0).toFixed(2);
+  
   async function handleFinalizeOrder() {
     const payload = { tableId: selectedTable?.id, items: orderItems.map(item => ({ productId: item.id, quantity: item.quantity })) };
-    try { await axios.post('http://localhost:3333/orders', payload); alert(`Pedido ${selectedTable?.name} finalizado!`); handleGoBackToTables(); }
+    try { 
+      await axios.post('http://localhost:3333/orders', payload); 
+      alert(`Pedido ${selectedTable?.name} finalizado!`);
+      if (isMobile) {
+        closeCart();
+      }
+      handleGoBackToTables();
+    }
     catch (error) { console.error("Erro...", error); alert('Erro...'); }
   }
+  
   async function handleCreateIngredient(event: FormEvent) {
     event.preventDefault(); if (!newIngredientName || !newIngredientQuantity) { alert('Preencha nome/qtd.'); return; }
     const payload = { name: newIngredientName, stockQuantity: parseFloat(newIngredientQuantity), unit: newIngredientUnit };
@@ -233,15 +242,12 @@ function App() {
     if (ingredient) { setRecipeItems([...recipeItems, { ingredientId: ingredient.id, name: ingredient.name, quantity: selectedIngredientQuantity }]); setSelectedIngredientQuantity(''); }
   }
   
-  // --- ✨ FUNÇÃO DE CRIAR PRODUTO ATUALIZADA ✨ ---
   async function handleCreateProduct(event: FormEvent) {
     event.preventDefault();
     if (!newProductName || !newProductPrice) {
       alert('Preencha o nome e o preço do produto.');
       return;
     }
-    
-    // Etapa 1: Criar o produto (sem imagem)
     const productPayload = {
       name: newProductName,
       price: parseFloat(newProductPrice),
@@ -250,35 +256,25 @@ function App() {
         quantity: parseFloat(item.quantity)
       }))
     };
-
     try {
       const productResponse = await axios.post('http://localhost:3333/products', productPayload);
       let newProduct: Product = productResponse.data;
-      
-      // Etapa 2: Se uma imagem foi selecionada, faz o upload
-      if (newProductImage) {
+      if (newProductImage) { // ✨ ERRO ESTAVA AQUI (newProductImage)
         const formData = new FormData();
-        formData.append('image', newProductImage); // 'image' é o nome do campo
-
+        formData.append('image', newProductImage); // ✨ ERRO ESTAVA AQUI (newProductImage)
         const uploadResponse = await axios.post(
           `http://localhost:3333/products/${newProduct.id}/upload`,
           formData,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         );
-        newProduct = uploadResponse.data; // Pega a versão final do produto com a URL da imagem
+        newProduct = uploadResponse.data;
       }
-
-      // 3. Atualiza a lista de produtos no frontend
       setProducts(prevProducts => [...prevProducts, newProduct]);
-      
-      // 4. Limpa o formulário
       setNewProductName('');
       setNewProductPrice('');
       setRecipeItems([]);
-      setNewProductImage(null); // Limpa o arquivo de imagem
-      
+      setNewProductImage(null); // ✨ ERRO ESTAVA AQUI (setNewProductImage)
       alert('Produto criado com sucesso!');
-
     } catch (error) {
       console.error('Erro ao criar produto ou fazer upload:', error);
       alert('Erro ao criar produto.');
@@ -312,7 +308,36 @@ function App() {
     }
   }
 
-  // --- Renderização --- (COMPLETA, COM MUDANÇAS EM 'MANAGEMENT' E 'ORDER')
+  // --- Conteúdo da Comanda Reutilizável ---
+  const renderOrderContent = () => (
+    <Paper shadow="xs" p="md" withBorder>
+      <Title order={2} mb="md">Itens</Title>
+      {orderItems.length === 0 ? ( <Text c="dimmed">Nenhum item adicionado.</Text> ) : (
+        <ScrollArea h={isMobile ? "calc(100vh - 250px)" : 400}>
+          <List spacing="sm" size="sm" mb="md">
+            {orderItems.map(item => (
+              <List.Item key={item.id}>
+                <Group justify="space-between">
+                  <Text>{item.name} (x{item.quantity})</Text>
+                  <Text fw={500}>R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</Text>
+                </Group>
+              </List.Item>
+            ))}
+          </List>
+        </ScrollArea>
+      )}
+      <hr />
+      <Group justify="space-between" mt="md">
+        <Title order={3}>Total:</Title>
+        <Title order={3}>R$ {calculateTotal()}</Title>
+      </Group>
+      <Button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} fullWidth color="green" mt="xl" size="lg" >
+        Finalizar Pedido
+      </Button>
+    </Paper>
+  );
+
+  // --- Renderização ---
   const renderView = () => {
     switch (currentView) {
       case 'DASHBOARD':
@@ -335,20 +360,8 @@ function App() {
             </SimpleGrid>
             <Title order={2} mb="md">Top 5 Produtos Mais Vendidos</Title>
             <Table striped highlightOnHover withTableBorder withColumnBorders>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Produto</Table.Th>
-                  <Table.Th>Unidades Vendidas</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {dashboardData.topProducts.map((p) => (
-                  <Table.Tr key={p.productId}>
-                    <Table.Td>{p.name}</Table.Td>
-                    <Table.Td>{p.quantitySold}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
+              <Table.Thead><Table.Tr><Table.Th>Produto</Table.Th><Table.Th>Unidades Vendidas</Table.Th></Table.Tr></Table.Thead>
+              <Table.Tbody>{dashboardData.topProducts.map((p) => (<Table.Tr key={p.productId}><Table.Td>{p.name}</Table.Td><Table.Td>{p.quantitySold}</Table.Td></Table.Tr>))}</Table.Tbody>
             </Table>
           </Container>
         );
@@ -364,7 +377,6 @@ function App() {
                 <Tabs.Tab value="mesas">Gestão de Mesas</Tabs.Tab>
               </Tabs.List>
 
-              {/* Painel Insumos */}
               <Tabs.Panel value="insumos" pt="lg">
                 <Title order={2} mb="lg">Gestão de Estoque - Insumos</Title>
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateIngredient}>
@@ -375,7 +387,6 @@ function App() {
                 <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Estoque Atual</Table.Th> <Table.Th>Unidade</Table.Th> </Table.Tr> </Table.Thead> <Table.Tbody>{ingredients.map(ing => ( <Table.Tr key={ing.id}> <Table.Td>{ing.name}</Table.Td> <Table.Td>{parseFloat(String(ing.stockQuantity) || '0').toFixed(2)}</Table.Td> <Table.Td>{ing.unit}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
               </Tabs.Panel>
 
-              {/* ✨ Painel Produtos (ATUALIZADO) ✨ */}
               <Tabs.Panel value="produtos" pt="lg">
                  <Title order={2} mb="lg">Gestão de Produtos</Title>
                  <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateProduct}>
@@ -383,16 +394,14 @@ function App() {
                    <Stack>
                      <TextInput label="Nome do Produto" value={newProductName} onChange={(event) => setNewProductName(event.currentTarget.value)} required />
                      <NumberInput label="Preço de Venda (R$)" value={newProductPrice} onChange={(value) => setNewProductPrice(String(value))} min={0} step={0.01} decimalScale={2} required prefix="R$ " />
-                     
-                     {/* ✨ ADICIONADO: Campo de Upload de Imagem ✨ */}
+                     {/* ✨ ERRO ESTAVA AQUI (FileInput) ✨ */}
                      <FileInput
                         label="Imagem do Produto (Opcional)"
                         placeholder="Clique para selecionar uma imagem"
-                        value={newProductImage}
-                        onChange={setNewProductImage}
+                        value={newProductImage} // ✨ ERRO ESTAVA AQUI (newProductImage)
+                        onChange={setNewProductImage} // ✨ ERRO ESTAVA AQUI (setNewProductImage)
                         accept="image/png,image/jpeg"
                       />
-                     
                      <Title order={4} mt="md">Ficha Técnica (Receita)</Title>
                      <Paper p="sm" withBorder style={{ background: '#f9f9f9' }}>
                        <Group grow align='flex-end'>
@@ -405,9 +414,7 @@ function App() {
                      <Button type="submit" mt="md" color="green">Salvar Novo Produto</Button>
                    </Stack>
                  </Paper>
-                 
                  <Title order={2} mb="md">Produtos Cadastrados</Title>
-                 {/* ✨ TABELA DE PRODUTOS ATUALIZADA COM IMAGEM ✨ */}
                  <Table striped highlightOnHover withTableBorder withColumnBorders>
                    <Table.Thead>
                      <Table.Tr>
@@ -420,11 +427,7 @@ function App() {
                     {products.map(p => (
                       <Table.Tr key={p.id}>
                         <Table.Td>
-                          <Image
-                            src={p.imageUrl || 'https://via.placeholder.com/40'} // Imagem padrão
-                            alt={p.name}
-                            h={40} w={40} fit="cover" radius="sm"
-                          />
+                          <Image src={p.imageUrl || 'https://via.placeholder.com/40'} alt={p.name} h={40} w={40} fit="cover" radius="sm" />
                         </Table.Td>
                         <Table.Td>{p.name}</Table.Td>
                         <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td>
@@ -434,7 +437,6 @@ function App() {
                  </Table>
               </Tabs.Panel>
               
-              {/* Painel Mesas */}
               <Tabs.Panel value="mesas" pt="lg">
                 <Title order={2} mb="lg">Gestão de Mesas</Title>
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateTable}>
@@ -478,7 +480,6 @@ function App() {
           </Container>
         );
 
-      // ✨ TELA DE COMANDA ATUALIZADA COM IMAGEM ✨
       case 'ORDER':
         return (
           <Container size="lg" mt="md">
@@ -493,13 +494,8 @@ function App() {
                   <Stack gap="sm">
                     {products.map(p => (
                       <Paper key={p.id} shadow="xs" p="md" withBorder onClick={() => addProductToOrder(p)} style={{ cursor: 'pointer' }}>
-                        {/* ✨ ADICIONADO GRUPO COM IMAGEM ✨ */}
                         <Group>
-                          <Image
-                            src={p.imageUrl || 'https://via.placeholder.com/40'}
-                            alt={p.name}
-                            h={40} w={40} fit="cover" radius="sm"
-                          />
+                          <Image src={p.imageUrl || 'https://via.placeholder.com/40'} alt={p.name} h={40} w={40} fit="cover" radius="sm" />
                           <Box style={{flex: 1}}>
                             <Group justify="space-between">
                               <Text fw={500}>{p.name}</Text>
@@ -512,33 +508,32 @@ function App() {
                   </Stack>
                 </ScrollArea>
               </Grid.Col>
-              {/* Coluna da Comanda */}
               <Grid.Col span={{ base: 12, md: 5 }}>
-                <Paper shadow="xs" p="md" withBorder>
-                  <Title order={2} mb="md">Itens</Title>
-                  {orderItems.length === 0 ? ( <Text c="dimmed">Nenhum item adicionado.</Text> ) : (
-                    <List spacing="sm" size="sm" mb="md">
-                      {orderItems.map(item => (
-                        <List.Item key={item.id}>
-                          <Group justify="space-between">
-                            <Text>{item.name} (x{item.quantity})</Text>
-                            <Text fw={500}>R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</Text>
-                          </Group>
-                        </List.Item>
-                      ))}
-                    </List>
-                  )}
-                  <hr />
-                  <Group justify="space-between" mt="md">
-                    <Title order={3}>Total:</Title>
-                    <Title order={3}>R$ {calculateTotal()}</Title>
-                  </Group>
-                  <Button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} fullWidth color="green" mt="xl" size="lg" >
-                    Finalizar Pedido
-                  </Button>
-                </Paper>
+                {/* ✨ ERRO ESTAVA AQUI (Botão Flutuante) ✨ */}
+                {renderOrderContent()}
               </Grid.Col>
             </Grid>
+            {/* ✨ CORREÇÃO: Botão flutuante e Drawer movidos para cá ✨ */}
+            {isMobile && (
+              <>
+                <Affix position={{ bottom: 20, right: 20 }}>
+                  <Button onClick={openCart} size="lg" radius="xl" /* shadow="md" <-- Propriedade inválida removida */>
+                    Ver Comanda ({orderItems.length}) - R$ {calculateTotal()}
+                  </Button>
+                </Affix>
+                <Drawer
+                  opened={cartDrawerOpen}
+                  onClose={closeCart}
+                  title={<Title order={3}>Comanda - {selectedTable?.name}</Title>}
+                  position="bottom"
+                  size="90%"
+                  withCloseButton
+                  shadow="md"
+                >
+                  {renderOrderContent()}
+                </Drawer>
+              </>
+            )}
           </Container>
         );
 
