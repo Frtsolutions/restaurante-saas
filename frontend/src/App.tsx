@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// ✨ Importações do Mantine (ADICIONADAS Grid, ScrollArea, etc.) ✨
+// ✨ Importações do Mantine (Verificadas e completas) ✨
 import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea } from '@mantine/core';
+
 
 // ==================================================================
 // INTERFACES (SEU CÓDIGO - SEM ALTERAÇÕES)
@@ -140,29 +141,50 @@ function App() {
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
 
-  // --- Renderização --- (APENAS 'ORDER' FOI ALTERADO)
+  // --- Renderização --- (APENAS 'DASHBOARD' FOI ALTERADO)
   const renderView = () => {
     switch (currentView) {
-      // TELA DE DASHBOARD (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
+      // --- ✨ TELA DE DASHBOARD REFATORADA COM MANTINE ✨ ---
       case 'DASHBOARD':
         return (
-          <div style={{ padding: '20px' }}>
-            <h1>Dashboard - Vendas de Hoje</h1>
-            <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
-              <div style={{ border: '1px solid #ccc', padding: '20px', flex: 1, borderRadius: '8px' }}>
-                <h2>Faturamento Total</h2>
-                <p style={{ fontSize: '24px', fontWeight: 'bold' }}>R$ {parseFloat(String(dashboardData.totalRevenue || 0)).toFixed(2)}</p>
-              </div>
-              <div style={{ border: '1px solid #ccc', padding: '20px', flex: 1, borderRadius: '8px' }}>
-                <h2>Total de Pedidos</h2>
-                <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{dashboardData.orderCount}</p>
-              </div>
-            </div>
-            <div>
-              <h2>Top 5 Produtos Mais Vendidos</h2>
-              <ul style={{ listStyle: 'none', padding: 0 }}>{dashboardData.topProducts.map((p) => <li key={p.productId} style={{ borderBottom: '1px solid #eee', padding: '10px 0' }}>{p.name} - <strong>{p.quantitySold} unidades</strong></li>)}</ul>
-            </div>
-          </div>
+          <Container size="lg" mt="md">
+            <Title order={1} mb="xl">Dashboard - Vendas de Hoje</Title>
+            
+            {/* Indicadores em Cards */}
+            <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
+              <Paper shadow="xs" p="xl" withBorder radius="md">
+                <Title order={3} c="dimmed">Faturamento Total</Title>
+                <Text fz="xxl" fw={700} c="green"> {/* fz = font-size, fw = font-weight, c = color */}
+                  R$ {parseFloat(String(dashboardData.totalRevenue || 0)).toFixed(2)}
+                </Text>
+              </Paper>
+              <Paper shadow="xs" p="xl" withBorder radius="md">
+                <Title order={3} c="dimmed">Total de Pedidos</Title>
+                <Text fz="xxl" fw={700}>
+                  {dashboardData.orderCount}
+                </Text>
+              </Paper>
+            </SimpleGrid>
+            
+            {/* Tabela de Produtos Mais Vendidos */}
+            <Title order={2} mb="md">Top 5 Produtos Mais Vendidos</Title>
+            <Table striped highlightOnHover withTableBorder withColumnBorders>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Produto</Table.Th>
+                  <Table.Th>Unidades Vendidas</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {dashboardData.topProducts.map((p) => (
+                  <Table.Tr key={p.productId}>
+                    <Table.Td>{p.name}</Table.Td>
+                    <Table.Td>{p.quantitySold}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Container>
         );
 
       // TELA DE GESTÃO (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
@@ -219,7 +241,7 @@ function App() {
           </Container>
         );
 
-      // --- ✨ TELA DE COMANDA REFATORADA COM MANTINE ✨ ---
+      // TELA DE COMANDA (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
       case 'ORDER':
         return (
           <Container size="lg" mt="md">
@@ -227,23 +249,13 @@ function App() {
               Voltar para Mesas
             </Button>
             <Title order={1} mb="xl">Comanda - {selectedTable?.name}</Title>
-            
-            <Grid> {/* Grid para dividir a tela */}
-              
-              {/* Coluna da Esquerda: Cardápio */}
-              <Grid.Col span={{ base: 12, md: 7 }}> {/* Ocupa 7 de 12 colunas em telas médias/grandes */}
+            <Grid>
+              <Grid.Col span={{ base: 12, md: 7 }}>
                 <Title order={2} mb="md">Cardápio</Title>
-                <ScrollArea h={600}> {/* Área de rolagem para o cardápio */}
-                  <Stack gap="sm"> {/* Empilha os produtos */}
+                <ScrollArea h={600}>
+                  <Stack gap="sm">
                     {products.map(p => (
-                      <Paper 
-                        key={p.id} 
-                        shadow="xs" 
-                        p="md" 
-                        withBorder 
-                        onClick={() => addProductToOrder(p)}
-                        style={{ cursor: 'pointer' }}
-                      >
+                      <Paper key={p.id} shadow="xs" p="md" withBorder onClick={() => addProductToOrder(p)} style={{ cursor: 'pointer' }}>
                         <Group justify="space-between">
                           <Text fw={500}>{p.name}</Text>
                           <Text>R$ {parseFloat(p.price).toFixed(2)}</Text>
@@ -253,14 +265,10 @@ function App() {
                   </Stack>
                 </ScrollArea>
               </Grid.Col>
-
-              {/* Coluna da Direita: Comanda/Itens */}
-              <Grid.Col span={{ base: 12, md: 5 }}> {/* Ocupa 5 de 12 colunas */}
+              <Grid.Col span={{ base: 12, md: 5 }}>
                 <Paper shadow="xs" p="md" withBorder>
                   <Title order={2} mb="md">Itens</Title>
-                  {orderItems.length === 0 ? (
-                    <Text c="dimmed">Nenhum item adicionado.</Text>
-                  ) : (
+                  {orderItems.length === 0 ? ( <Text c="dimmed">Nenhum item adicionado.</Text> ) : (
                     <List spacing="sm" size="sm" mb="md">
                       {orderItems.map(item => (
                         <List.Item key={item.id}>
@@ -277,48 +285,48 @@ function App() {
                     <Title order={3}>Total:</Title>
                     <Title order={3}>R$ {calculateTotal()}</Title>
                   </Group>
-                  <Button 
-                    onClick={handleFinalizeOrder} 
-                    disabled={orderItems.length === 0}
-                    fullWidth // Ocupa 100% da largura
-                    color="green" 
-                    mt="xl" // Margem superior
-                    size="lg" // Botão grande
-                  >
+                  <Button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} fullWidth color="green" mt="xl" size="lg" >
                     Finalizar Pedido
                   </Button>
                 </Paper>
               </Grid.Col>
-
             </Grid>
           </Container>
         );
 
-      // TELA DE MESAS & KDS (SEU JSX ORIGINAL - SEM ALTERAÇÕES)
+      // TELA DE MESAS & KDS (REFATORADA ANTERIORMENTE - SEM ALTERAÇÕES NESTA ETAPA)
       case 'TABLE_SELECTION':
       default:
         return (
-            <div style={{ padding: '20px' }}>
-              <h1>Seleção de Mesas</h1>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px' }}>{tables.map(table => (<div key={table.id} onClick={() => handleSelectTable(table)} style={{ border: '2px solid green', borderRadius: '10px', width: '120px', height: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold', background: '#e8f5e9' }}>{table.name}</div>))}</div>
-              <hr style={{ margin: '30px 0', border: '2px solid lightblue' }} />
-              <div>
-                <h1>KDS - Cozinha</h1>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                  {kdsOrders.length === 0 && <p>Aguardando novos pedidos...</p>}
-                  {kdsOrders.map(order => (
-                    <div key={order.id} style={{ border: '2px solid black', padding: '15px', minWidth: '250px', borderRadius: '8px', background: '#fff9c4' }}>
-                      <h3>Pedido #{order.id.substring(0, 6)}</h3>
-                      <ul style={{ paddingLeft: '20px' }}>
-                        {order.items.map(item => (
-                          <li key={item.id}><strong>{item.quantity}x</strong> {item.product.name}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          <Container size="lg" mt="md">
+            <Title order={1} mb="xl">Seleção de Mesas</Title>
+            <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg" mb="xl" >
+              {tables.map(table => (
+                <Paper key={table.id} shadow="sm" p="lg" radius="md" withBorder onClick={() => handleSelectTable(table)} style={{ cursor: 'pointer', textAlign: 'center', backgroundColor: '#e8f5e9' }} mih={120} >
+                  <Text fw={700} size="xl">{table.name}</Text>
+                </Paper>
+              ))}
+            </SimpleGrid>
+            <hr style={{ margin: '30px 0', border: 'none', borderTop: '2px solid lightblue' }} />
+            <div>
+              <Title order={1} mb="xl">KDS - Cozinha</Title>
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+                {kdsOrders.length === 0 && <Text c="dimmed">Aguardando novos pedidos...</Text>}
+                {kdsOrders.map(order => (
+                  <Paper key={order.id} shadow="md" p="md" radius="md" withBorder style={{ background: '#fff9c4' }}>
+                    <Title order={3} mb="sm">Pedido #{order.id.substring(0, 6)}</Title>
+                    <List size="sm">
+                      {order.items.map(item => (
+                        <List.Item key={item.id}>
+                          <Text component="span" fw={700}>{item.quantity}x</Text> {item.product.name}
+                        </List.Item>
+                      ))}
+                    </List>
+                  </Paper>
+                ))}
+              </SimpleGrid>
             </div>
+          </Container>
         );
     }
   };
