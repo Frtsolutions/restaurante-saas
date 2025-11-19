@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-// Importações do Mantine (Completas)
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor, FileInput, Image, Box, Drawer, Affix } from '@mantine/core';
+// Importações do Mantine
+import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor, FileInput, Image, Box, Drawer, Affix, Burger } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 
 // ==================================================================
@@ -37,7 +37,9 @@ interface User {
   companyId: string;
 }
 
-const socket = io('https://meu-pdv-backend.onrender.com');
+// URL da API (Render ou Local)
+const API_URL = 'https://meu-pdv-backend.onrender.com'; 
+const socket = io(API_URL);
 
 // ==================================================================
 // COMPONENTE PRINCIPAL APP
@@ -59,43 +61,31 @@ function App() {
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
   const [products, setProducts] = useState<Product[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
-  
-  // --- Estados do PDV ---
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
-  
-  // --- Estados do KDS e Dashboard ---
   const [kdsOrders, setKdsOrders] = useState<FullOrder[]>([]);
   const [dashboardData, setDashboardData] = useState<DashboardData>({ totalRevenue: 0, orderCount: 0, topProducts: [] });
-  
-  // --- Estados da Gestão de Insumos ---
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [newIngredientName, setNewIngredientName] = useState('');
   const [newIngredientQuantity, setNewIngredientQuantity] = useState('');
   const [newIngredientUnit, setNewIngredientUnit] = useState('un');
-  
-  // --- Estados da Gestão de Produtos ---
   const [managementSubView, setManagementSubView] = useState<string | null>('insumos');
   const [newProductName, setNewProductName] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState('');
   const [selectedIngredientQuantity, setSelectedIngredientQuantity] = useState('');
-  // ✨ ESTADO FALTANTE ADICIONADO ✨
   const [newProductImage, setNewProductImage] = useState<File | null>(null);
-
-  // --- Estados do Financeiro ---
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [newTransactionDesc, setNewTransactionDesc] = useState('');
   const [newTransactionAmount, setNewTransactionAmount] = useState('');
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
-
-  // --- Estado da Gestão de Mesas ---
   const [newTableName, setNewTableName] = useState('');
   
   // --- Hooks para UI Responsiva ---
   const [cartDrawerOpen, { open: openCart, close: closeCart }] = useDisclosure(false);
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const isMobile = useMediaQuery('(max-width: 48em)');
 
   // --- Efeitos ---
@@ -103,22 +93,18 @@ function App() {
     const token = localStorage.getItem('authToken');
     const userDataString = localStorage.getItem('userData');
     if (token && userDataString) {
-      console.log("Token e Usuário encontrados, configurando app...");
       const userData: User = JSON.parse(userDataString);
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUserRole(userData.role);
       setIsAuthenticated(true);
-    } else {
-      console.log("Nenhum token/usuário encontrado, usuário precisa logar.");
     }
   }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
-      axios.get('https://meu-pdv-backend.onrender.com/products')
+      axios.get(`${API_URL}/products`)
         .then(response => setProducts(response.data))
         .catch(error => {
-          console.error("Erro ao buscar produtos:", error);
           if (error.response && error.response.status === 401) handleLogout();
         });
       socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
@@ -128,42 +114,41 @@ function App() {
 
   useEffect(() => {
     if (isAuthenticated && currentView) {
-      console.log(`[EFFECT 2] View mudou para: ${currentView}. Buscando dados...`);
+      if (mobileOpened) toggleMobile();
+
       if (userRole === 'CAIXA' && (currentView === 'DASHBOARD' || currentView === 'MANAGEMENT' || currentView === 'FINANCIAL')) {
-        console.warn(`[EFFECT 2] CAIXA tentou acessar view ${currentView}. Redirecionando.`);
         setCurrentView('TABLE_SELECTION');
         return;
       }
       switch (currentView) {
         case 'DASHBOARD':
-          axios.get('https://meu-pdv-backend.onrender.com/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro...", error));
+          axios.get(`${API_URL}/dashboard/today`).then(response => setDashboardData(response.data)).catch(console.error);
           break;
         case 'MANAGEMENT':
-          axios.get('https://meu-pdv-backend.onrender.com/ingredients').then(response => {
+          axios.get(`${API_URL}/ingredients`).then(response => {
             setIngredients(response.data);
             if(response.data.length > 0 && !selectedIngredientId) { setSelectedIngredientId(response.data[0].id); }
-          }).catch(error => console.error("Erro...", error));
-          axios.get('https://meu-pdv-backend.onrender.com/products').then(response => setProducts(response.data)).catch(error => console.error("Erro...", error));
-          axios.get('https://meu-pdv-backend.onrender.com/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
+          }).catch(console.error);
+          axios.get(`${API_URL}/products`).then(response => setProducts(response.data)).catch(console.error);
+          axios.get(`${API_URL}/tables`).then(response => setTables(response.data)).catch(console.error);
           break;
         case 'TABLE_SELECTION':
-          axios.get('https://meu-pdv-backend.onrender.com/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
+          axios.get(`${API_URL}/tables`).then(response => setTables(response.data)).catch(console.error);
           break;
         case 'FINANCIAL':
-          axios.get('https://meu-pdv-backend.onrender.com/financial/transactions').then(response => setTransactions(response.data)).catch(error => console.error("Erro...", error));
+          axios.get(`${API_URL}/financial/transactions`).then(response => setTransactions(response.data)).catch(console.error);
           break;
       }
     }
-  // ✨ CORREÇÃO: Removido 'selectedIngredientId' da lista de dependências
   }, [currentView, isAuthenticated, userRole]);
 
 
-  // --- Funções de Autenticação ---
+  // --- Funções ---
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
     setAuthError('');
     try {
-      const response = await axios.post('https://meu-pdv-backend.onrender.com/auth/login', { email: loginEmail, password: loginPassword });
+      const response = await axios.post(`${API_URL}/auth/login`, { email: loginEmail, password: loginPassword });
       const { token, user } = response.data;
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(user));
@@ -171,18 +156,16 @@ function App() {
       setUserRole(user.role);
       setIsAuthenticated(true);
     } catch (error) {
-      console.error("Erro de login:", error);
-      setAuthError('Email ou senha inválidos. Tente novamente.');
+      setAuthError('Email ou senha inválidos.');
     }
   }
 
   async function handleRegister(event: FormEvent) {
     event.preventDefault();
     setAuthError('');
-    const payload = { email: registerEmail, name: registerName, password: registerPassword, companyName: registerCompanyName };
     try {
-      await axios.post('https://meu-pdv-backend.onrender.com/auth/register', payload);
-      const loginResponse = await axios.post('https://meu-pdv-backend.onrender.com/auth/login', { email: registerEmail, password: registerPassword });
+      await axios.post(`${API_URL}/auth/register`, { email: registerEmail, name: registerName, password: registerPassword, companyName: registerCompanyName });
+      const loginResponse = await axios.post(`${API_URL}/auth/login`, { email: registerEmail, password: registerPassword });
       const { token, user } = loginResponse.data;
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(user));
@@ -190,12 +173,7 @@ function App() {
       setUserRole(user.role);
       setIsAuthenticated(true);
     } catch (error: any) {
-      console.error("Erro de registro:", error);
-      if (error.response && error.response.data && error.response.data.message) {
-        setAuthError(error.response.data.message);
-      } else {
-        setAuthError('Erro ao registrar. Tente novamente.');
-      }
+      setAuthError('Erro ao registrar.');
     }
   }
 
@@ -207,7 +185,6 @@ function App() {
     setUserRole(null);
   }
 
-  // --- Funções de Lógica de Negócio ---
   function handleSelectTable(table: Table) { setSelectedTable(table); setCurrentView('ORDER'); }
   function handleGoBackToTables() { setSelectedTable(null); setOrderItems([]); setCurrentView('TABLE_SELECTION'); }
   function addProductToOrder(product: Product) {
@@ -220,92 +197,55 @@ function App() {
   async function handleFinalizeOrder() {
     const payload = { tableId: selectedTable?.id, items: orderItems.map(item => ({ productId: item.id, quantity: item.quantity })) };
     try { 
-      await axios.post('https://meu-pdv-backend.onrender.com/orders', payload); 
+      await axios.post(`${API_URL}/orders`, payload); 
       alert(`Pedido ${selectedTable?.name} finalizado!`);
-      if (isMobile) {
-        closeCart();
-      }
+      if (isMobile) closeCart();
       handleGoBackToTables();
     }
-    catch (error) { console.error("Erro...", error); alert('Erro...'); }
+    catch (error) { alert('Erro ao finalizar.'); }
   }
   
   async function handleCreateIngredient(event: FormEvent) {
-    event.preventDefault(); if (!newIngredientName || !newIngredientQuantity) { alert('Preencha nome/qtd.'); return; }
+    event.preventDefault(); if (!newIngredientName || !newIngredientQuantity) return;
     const payload = { name: newIngredientName, stockQuantity: parseFloat(newIngredientQuantity), unit: newIngredientUnit };
-    try { const response = await axios.post('https://meu-pdv-backend.onrender.com/ingredients', payload); setIngredients([...ingredients, response.data]); setNewIngredientName(''); setNewIngredientQuantity(''); setNewIngredientUnit('un'); alert('Ingrediente criado!'); }
-    catch (error) { console.error("Erro...", error); alert('Erro...'); }
+    try { const response = await axios.post(`${API_URL}/ingredients`, payload); setIngredients([...ingredients, response.data]); setNewIngredientName(''); setNewIngredientQuantity(''); alert('Criado!'); }
+    catch (error) { alert('Erro ao criar.'); }
   }
   function handleAddIngredientToRecipe() {
-    if (!selectedIngredientId || !selectedIngredientQuantity) { alert('Selecione ingrediente/qtd.'); return; }
+    if (!selectedIngredientId || !selectedIngredientQuantity) return;
     const ingredient = ingredients.find(ing => ing.id === selectedIngredientId);
     if (ingredient) { setRecipeItems([...recipeItems, { ingredientId: ingredient.id, name: ingredient.name, quantity: selectedIngredientQuantity }]); setSelectedIngredientQuantity(''); }
   }
   
   async function handleCreateProduct(event: FormEvent) {
     event.preventDefault();
-    if (!newProductName || !newProductPrice) {
-      alert('Preencha o nome e o preço do produto.');
-      return;
-    }
-    const productPayload = {
-      name: newProductName,
-      price: parseFloat(newProductPrice),
-      recipeItems: recipeItems.map(item => ({
-        ingredientId: item.ingredientId,
-        quantity: parseFloat(item.quantity)
-      }))
-    };
+    if (!newProductName || !newProductPrice) return;
+    const productPayload = { name: newProductName, price: parseFloat(newProductPrice), recipeItems: recipeItems.map(item => ({ ingredientId: item.ingredientId, quantity: parseFloat(item.quantity) })) };
     try {
-      const productResponse = await axios.post('https://meu-pdv-backend.onrender.com/products', productPayload);
+      const productResponse = await axios.post(`${API_URL}/products`, productPayload);
       let newProduct: Product = productResponse.data;
-      if (newProductImage) { // ✨ ERRO ESTAVA AQUI (newProductImage)
+      if (newProductImage) {
         const formData = new FormData();
-        formData.append('image', newProductImage); // ✨ ERRO ESTAVA AQUI (newProductImage)
-        const uploadResponse = await axios.post(
-          `https://meu-pdv-backend.onrender.com/products/${newProduct.id}/upload`,
-          formData,
-          { headers: { 'Content-Type': 'multipart/form-data' } }
-        );
+        formData.append('image', newProductImage);
+        const uploadResponse = await axios.post(`${API_URL}/products/${newProduct.id}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
         newProduct = uploadResponse.data;
       }
       setProducts(prevProducts => [...prevProducts, newProduct]);
-      setNewProductName('');
-      setNewProductPrice('');
-      setRecipeItems([]);
-      setNewProductImage(null); // ✨ ERRO ESTAVA AQUI (setNewProductImage)
-      alert('Produto criado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao criar produto ou fazer upload:', error);
-      alert('Erro ao criar produto.');
-    }
+      setNewProductName(''); setNewProductPrice(''); setRecipeItems([]); setNewProductImage(null);
+      alert('Produto criado!');
+    } catch (error) { alert('Erro ao criar.'); }
   }
 
   async function handleCreateTransaction(event: FormEvent) {
-    event.preventDefault(); if (!newTransactionDesc || !newTransactionAmount) { alert('Preencha desc/valor.'); return; }
+    event.preventDefault(); if (!newTransactionDesc || !newTransactionAmount) return;
     const payload = { description: newTransactionDesc, amount: parseFloat(newTransactionAmount), type: newTransactionType, dueDate: newTransactionDueDate || null };
-    try { const response = await axios.post('https://meu-pdv-backend.onrender.com/financial/transactions', payload); setTransactions([response.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionType('DESPESA'); setNewTransactionDueDate(''); alert('Transação registrada!'); }
-    catch (error) { console.error('Erro...', error); alert('Erro...'); }
+    try { const response = await axios.post(`${API_URL}/financial/transactions`, payload); setTransactions([response.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionDueDate(''); alert('Registrado!'); }
+    catch (error) { alert('Erro.'); }
   }
   async function handleCreateTable(event: FormEvent) {
-    event.preventDefault();
-    if (!newTableName) {
-      alert('Por favor, insira um nome para a mesa.');
-      return;
-    }
-    try {
-      const response = await axios.post('https://meu-pdv-backend.onrender.com/tables', { name: newTableName });
-      setTables([...tables, response.data]);
-      setNewTableName('');
-      alert('Mesa criada com sucesso!');
-    } catch (error: any) {
-      console.error("Erro ao criar mesa:", error);
-      if (error.response && error.response.data && error.response.data.message) {
-        alert(`Erro: ${error.response.data.message}`);
-      } else {
-        alert('Erro ao criar mesa.');
-      }
-    }
+    event.preventDefault(); if (!newTableName) return;
+    try { const response = await axios.post(`${API_URL}/tables`, { name: newTableName }); setTables([...tables, response.data]); setNewTableName(''); alert('Mesa criada!'); } 
+    catch (error) { alert('Erro.'); }
   }
 
   // --- Conteúdo da Comanda Reutilizável ---
@@ -343,26 +283,18 @@ function App() {
       case 'DASHBOARD':
         return (
           <Container size="lg" mt="md">
-            <Title order={1} mb="xl">Dashboard - Vendas de Hoje</Title>
+            <Title order={1} mb="xl">Dashboard</Title>
             <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
-              <Paper shadow="xs" p="xl" withBorder radius="md">
-                <Title order={3} c="dimmed">Faturamento Total</Title>
-                <Text fz="xxl" fw={700} c="green">
-                  R$ {parseFloat(String(dashboardData.totalRevenue || 0)).toFixed(2)}
-                </Text>
-              </Paper>
-              <Paper shadow="xs" p="xl" withBorder radius="md">
-                <Title order={3} c="dimmed">Total de Pedidos</Title>
-                <Text fz="xxl" fw={700}>
-                  {dashboardData.orderCount}
-                </Text>
-              </Paper>
+              <Paper shadow="xs" p="xl" withBorder radius="md"><Title order={3} c="dimmed">Faturamento</Title><Text fz="xxl" fw={700} c="green">R$ {parseFloat(String(dashboardData.totalRevenue || 0)).toFixed(2)}</Text></Paper>
+              <Paper shadow="xs" p="xl" withBorder radius="md"><Title order={3} c="dimmed">Pedidos</Title><Text fz="xxl" fw={700}>{dashboardData.orderCount}</Text></Paper>
             </SimpleGrid>
-            <Title order={2} mb="md">Top 5 Produtos Mais Vendidos</Title>
-            <Table striped highlightOnHover withTableBorder withColumnBorders>
-              <Table.Thead><Table.Tr><Table.Th>Produto</Table.Th><Table.Th>Unidades Vendidas</Table.Th></Table.Tr></Table.Thead>
-              <Table.Tbody>{dashboardData.topProducts.map((p) => (<Table.Tr key={p.productId}><Table.Td>{p.name}</Table.Td><Table.Td>{p.quantitySold}</Table.Td></Table.Tr>))}</Table.Tbody>
-            </Table>
+            <Title order={2} mb="md">Top Produtos</Title>
+            <Table.ScrollContainer minWidth={500}>
+              <Table striped highlightOnHover withTableBorder withColumnBorders>
+                <Table.Thead><Table.Tr><Table.Th>Produto</Table.Th><Table.Th>Qtd</Table.Th></Table.Tr></Table.Thead>
+                <Table.Tbody>{dashboardData.topProducts.map((p) => (<Table.Tr key={p.productId}><Table.Td>{p.name}</Table.Td><Table.Td>{p.quantitySold}</Table.Td></Table.Tr>))}</Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           </Container>
         );
 
@@ -372,85 +304,46 @@ function App() {
             <Title order={1} mb="xl">Gestão</Title>
             <Tabs value={managementSubView} onChange={setManagementSubView}>
               <Tabs.List grow>
-                <Tabs.Tab value="insumos">Gestão de Insumos</Tabs.Tab>
-                <Tabs.Tab value="produtos">Gestão de Produtos</Tabs.Tab>
-                <Tabs.Tab value="mesas">Gestão de Mesas</Tabs.Tab>
+                <Tabs.Tab value="insumos">Insumos</Tabs.Tab>
+                <Tabs.Tab value="produtos">Produtos</Tabs.Tab>
+                <Tabs.Tab value="mesas">Mesas</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="insumos" pt="lg">
-                <Title order={2} mb="lg">Gestão de Estoque - Insumos</Title>
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateIngredient}>
-                  <Title order={3} mb="md">Adicionar Novo Insumo</Title>
-                  <Stack> <TextInput label="Nome do Insumo" placeholder="Ex: Pão Brioche" value={newIngredientName} onChange={(event) => setNewIngredientName(event.currentTarget.value)} required /> <Group grow> <NumberInput label="Quantidade Inicial" placeholder="Ex: 100" value={newIngredientQuantity} onChange={(value) => setNewIngredientQuantity(String(value))} min={0} step={0.01} decimalScale={2} required /> <Select label="Unidade" value={newIngredientUnit} onChange={(value) => setNewIngredientUnit(value || 'un')} data={[{ value: 'un', label: 'Unidade (un)' }, { value: 'g', label: 'Grama (g)' }, { value: 'kg', label: 'Quilo (kg)' }, { value: 'ml', label: 'Mililitro (ml)' }, { value: 'l', label: 'Litro (l)' },]} required allowDeselect={false} /> </Group> <Button type="submit" mt="md">Adicionar Insumo</Button> </Stack>
+                  <Title order={3} mb="md">Novo Insumo</Title>
+                  <Stack> <TextInput label="Nome" value={newIngredientName} onChange={(e) => setNewIngredientName(e.target.value)} required /> <Group grow> <NumberInput label="Qtd" value={newIngredientQuantity} onChange={(v) => setNewIngredientQuantity(String(v))} required /> <Select label="Un" value={newIngredientUnit} onChange={(v) => setNewIngredientUnit(v || 'un')} data={['un', 'g', 'kg', 'ml', 'l']} required allowDeselect={false} /> </Group> <Button type="submit">Adicionar</Button> </Stack>
                 </Paper>
-                <Title order={2} mb="md">Insumos em Estoque</Title>
-                <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Estoque Atual</Table.Th> <Table.Th>Unidade</Table.Th> </Table.Tr> </Table.Thead> <Table.Tbody>{ingredients.map(ing => ( <Table.Tr key={ing.id}> <Table.Td>{ing.name}</Table.Td> <Table.Td>{parseFloat(String(ing.stockQuantity) || '0').toFixed(2)}</Table.Td> <Table.Td>{ing.unit}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
+                <Title order={2} mb="md">Estoque</Title>
+                <Table.ScrollContainer minWidth={500}>
+                  <Table striped highlightOnHover withTableBorder withColumnBorders>
+                    <Table.Thead> <Table.Tr> <Table.Th>Nome</Table.Th> <Table.Th>Qtd</Table.Th> <Table.Th>Un</Table.Th> </Table.Tr> </Table.Thead>
+                    <Table.Tbody>{ingredients.map(ing => ( <Table.Tr key={ing.id}> <Table.Td>{ing.name}</Table.Td> <Table.Td>{parseFloat(String(ing.stockQuantity) || '0').toFixed(2)}</Table.Td> <Table.Td>{ing.unit}</Table.Td> </Table.Tr> ))}</Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
               </Tabs.Panel>
 
               <Tabs.Panel value="produtos" pt="lg">
-                 <Title order={2} mb="lg">Gestão de Produtos</Title>
                  <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateProduct}>
-                   <Title order={3} mb="md">Adicionar Novo Produto</Title>
-                   <Stack>
-                     <TextInput label="Nome do Produto" value={newProductName} onChange={(event) => setNewProductName(event.currentTarget.value)} required />
-                     <NumberInput label="Preço de Venda (R$)" value={newProductPrice} onChange={(value) => setNewProductPrice(String(value))} min={0} step={0.01} decimalScale={2} required prefix="R$ " />
-                     {/* ✨ ERRO ESTAVA AQUI (FileInput) ✨ */}
-                     <FileInput
-                        label="Imagem do Produto (Opcional)"
-                        placeholder="Clique para selecionar uma imagem"
-                        value={newProductImage} // ✨ ERRO ESTAVA AQUI (newProductImage)
-                        onChange={setNewProductImage} // ✨ ERRO ESTAVA AQUI (setNewProductImage)
-                        accept="image/png,image/jpeg"
-                      />
-                     <Title order={4} mt="md">Ficha Técnica (Receita)</Title>
-                     <Paper p="sm" withBorder style={{ background: '#f9f9f9' }}>
-                       <Group grow align='flex-end'>
-                         <Select label="Ingrediente" placeholder="Selecione..." value={selectedIngredientId} onChange={(value) => setSelectedIngredientId(value || '')} data={ingredients.map(ing => ({ value: ing.id, label: `${ing.name} (${ing.unit})` }))} searchable clearable nothingFoundMessage="Nenhum ingrediente encontrado" />
-                         <NumberInput label="Quantidade" value={selectedIngredientQuantity} onChange={(value) => setSelectedIngredientQuantity(String(value))} min={0} step={0.01} decimalScale={2} />
-                         <Button onClick={handleAddIngredientToRecipe} variant="outline">Adicionar</Button>
-                       </Group>
-                     </Paper>
-                     <Paper p="xs" mt="xs">{recipeItems.length === 0 && <span style={{color: 'grey'}}>Nenhum ingrediente adicionado</span>}<ul>{recipeItems.map((item, index) => <li key={index}>{item.name} - {item.quantity} {ingredients.find(ing => ing.id === item.ingredientId)?.unit}</li>)}</ul></Paper>
-                     <Button type="submit" mt="md" color="green">Salvar Novo Produto</Button>
-                   </Stack>
+                   <Title order={3} mb="md">Novo Produto</Title>
+                   <Stack> <TextInput label="Nome" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} required /> <NumberInput label="Preço" value={newProductPrice} onChange={(v) => setNewProductPrice(String(v))} required prefix="R$ " /> <FileInput label="Imagem" value={newProductImage} onChange={setNewProductImage} accept="image/*" /> <Title order={4}>Receita</Title> <Paper p="sm" withBorder bg="gray.0"> <Group grow align='flex-end'> <Select label="Ingrediente" data={ingredients.map(i => ({ value: i.id, label: i.name }))} value={selectedIngredientId} onChange={(v) => setSelectedIngredientId(v || '')} /> <NumberInput label="Qtd" value={selectedIngredientQuantity} onChange={(v) => setSelectedIngredientQuantity(String(v))} /> <Button onClick={handleAddIngredientToRecipe} variant="outline">Add</Button> </Group> </Paper> <List>{recipeItems.map((i, idx) => <List.Item key={idx}>{i.name} - {i.quantity}</List.Item>)}</List> <Button type="submit" color="green">Salvar</Button> </Stack>
                  </Paper>
-                 <Title order={2} mb="md">Produtos Cadastrados</Title>
-                 <Table striped highlightOnHover withTableBorder withColumnBorders>
-                   <Table.Thead>
-                     <Table.Tr>
-                       <Table.Th style={{ width: 60 }}>Imagem</Table.Th>
-                       <Table.Th>Nome</Table.Th>
-                       <Table.Th>Preço (R$)</Table.Th>
-                     </Table.Tr>
-                   </Table.Thead>
-                   <Table.Tbody>
-                    {products.map(p => (
-                      <Table.Tr key={p.id}>
-                        <Table.Td>
-                          <Image src={p.imageUrl || 'https://via.placeholder.com/40'} alt={p.name} h={40} w={40} fit="cover" radius="sm" />
-                        </Table.Td>
-                        <Table.Td>{p.name}</Table.Td>
-                        <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                   </Table.Tbody>
-                 </Table>
+                 <Title order={2} mb="md">Produtos</Title>
+                 <Table.ScrollContainer minWidth={500}>
+                   <Table striped highlightOnHover withTableBorder withColumnBorders>
+                     <Table.Thead> <Table.Tr> <Table.Th>Img</Table.Th> <Table.Th>Nome</Table.Th> <Table.Th>Preço</Table.Th> </Table.Tr> </Table.Thead>
+                     <Table.Tbody>{products.map(p => ( <Table.Tr key={p.id}> <Table.Td><Image src={p.imageUrl || ''} h={30} w={30} fit="contain" /></Table.Td> <Table.Td>{p.name}</Table.Td> <Table.Td>R$ {parseFloat(p.price).toFixed(2)}</Table.Td> </Table.Tr> ))}</Table.Tbody>
+                   </Table>
+                 </Table.ScrollContainer>
               </Tabs.Panel>
               
               <Tabs.Panel value="mesas" pt="lg">
-                <Title order={2} mb="lg">Gestão de Mesas</Title>
                 <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateTable}>
-                  <Title order={3} mb="md">Adicionar Nova Mesa</Title>
-                  <Group align="flex-end">
-                    <TextInput label="Nome da Mesa" placeholder="Ex: Mesa 01, Balcão 02" value={newTableName} onChange={(event) => setNewTableName(event.currentTarget.value)} required style={{ flex: 1 }} />
-                    <Button type="submit">Adicionar Mesa</Button>
-                  </Group>
+                  <Title order={3} mb="md">Nova Mesa</Title>
+                  <Group align="flex-end"> <TextInput label="Nome" value={newTableName} onChange={(e) => setNewTableName(e.target.value)} required style={{ flex: 1 }} /> <Button type="submit">Adicionar</Button> </Group>
                 </Paper>
-                <Title order={2} mb="md">Mesas Cadastradas</Title>
-                <Table striped highlightOnHover withTableBorder withColumnBorders>
-                  <Table.Thead> <Table.Tr> <Table.Th>Nome da Mesa</Table.Th> </Table.Tr> </Table.Thead>
-                  <Table.Tbody>{tables.map(table => ( <Table.Tr key={table.id}> <Table.Td>{table.name}</Table.Td> </Table.Tr> ))}</Table.Tbody>
-                </Table>
+                <Title order={2} mb="md">Mesas</Title>
+                <Table striped highlightOnHover withTableBorder withColumnBorders> <Table.Tbody>{tables.map(t => ( <Table.Tr key={t.id}> <Table.Td>{t.name}</Table.Td> </Table.Tr> ))}</Table.Tbody> </Table>
               </Tabs.Panel>
             </Tabs>
           </Container>
@@ -459,77 +352,48 @@ function App() {
       case 'FINANCIAL':
         return (
           <Container size="lg" mt="md">
-            <Title order={1} mb="xl">Financeiro - Contas a Pagar/Receber</Title>
+            <Title order={1} mb="xl">Financeiro</Title>
             <Paper shadow="xs" p="md" mb="xl" withBorder component="form" onSubmit={handleCreateTransaction}>
-              <Title order={3} mb="md">Registrar Nova Transação</Title>
+              <Title order={3} mb="md">Nova Transação</Title>
               <Stack>
-                <TextInput label="Descrição" placeholder="Ex: Aluguel, Compra de Mercadoria" value={newTransactionDesc} onChange={(event) => setNewTransactionDesc(event.currentTarget.value)} required />
-                <Group grow>
-                  <NumberInput label="Valor (R$)" placeholder="Ex: 150.50" value={newTransactionAmount} onChange={(value) => setNewTransactionAmount(String(value))} min={0} step={0.01} decimalScale={2} required prefix="R$ "/>
-                  <Select label="Tipo" value={newTransactionType} onChange={(value) => setNewTransactionType(value || 'DESPESA')} data={[{ value: 'DESPESA', label: 'Despesa' }, { value: 'RECEITA', label: 'Receita' },]} required allowDeselect={false}/>
-                   <TextInput type='date' label="Data de Vencimento (Opcional)" value={newTransactionDueDate} onChange={(event) => setNewTransactionDueDate(event.currentTarget.value)} />
-                </Group>
-                <Button type="submit" mt="md">Adicionar Transação</Button>
+                <TextInput label="Descrição" value={newTransactionDesc} onChange={(e) => setNewTransactionDesc(e.target.value)} required />
+                <Group grow> <NumberInput label="Valor" value={newTransactionAmount} onChange={(v) => setNewTransactionAmount(String(v))} required prefix="R$ "/> <Select label="Tipo" value={newTransactionType} onChange={(v) => setNewTransactionType(v || 'DESPESA')} data={['DESPESA', 'RECEITA']} allowDeselect={false}/> <TextInput type='date' label="Vencimento" value={newTransactionDueDate} onChange={(e) => setNewTransactionDueDate(e.target.value)} /> </Group>
+                <Button type="submit">Adicionar</Button>
               </Stack>
             </Paper>
-            <Title order={2} mb="md">Histórico de Transações</Title>
-            <Table striped highlightOnHover withTableBorder withColumnBorders>
-              <Table.Thead> <Table.Tr> <Table.Th>Descrição</Table.Th> <Table.Th>Valor (R$)</Table.Th> <Table.Th>Tipo</Table.Th> <Table.Th>Vencimento</Table.Th> </Table.Tr> </Table.Thead>
-              <Table.Tbody>{transactions.map(t => (<Table.Tr key={t.id}><Table.Td>{t.description}</Table.Td><Table.Td style={{ color: t.type === 'DESPESA' ? 'red' : 'green' }}>{parseFloat(t.amount).toFixed(2)}</Table.Td><Table.Td>{t.type}</Table.Td><Table.Td>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '-'}</Table.Td></Table.Tr>))}</Table.Tbody>
-            </Table>
+            <Title order={2} mb="md">Histórico</Title>
+            <Table.ScrollContainer minWidth={600}>
+              <Table striped highlightOnHover withTableBorder withColumnBorders>
+                <Table.Thead> <Table.Tr> <Table.Th>Descrição</Table.Th> <Table.Th>Valor</Table.Th> <Table.Th>Tipo</Table.Th> <Table.Th>Data</Table.Th> </Table.Tr> </Table.Thead>
+                <Table.Tbody>{transactions.map(t => (<Table.Tr key={t.id}><Table.Td>{t.description}</Table.Td><Table.Td c={t.type === 'DESPESA' ? 'red' : 'green'}>{parseFloat(t.amount).toFixed(2)}</Table.Td><Table.Td>{t.type}</Table.Td><Table.Td>{t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '-'}</Table.Td></Table.Tr>))}</Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
           </Container>
         );
 
       case 'ORDER':
         return (
           <Container size="lg" mt="md">
-            <Button onClick={handleGoBackToTables} variant="light" mb="md" leftSection={'←'}>
-              Voltar para Mesas
-            </Button>
+            <Button onClick={handleGoBackToTables} variant="light" mb="md" leftSection={'←'}>Voltar</Button>
             <Title order={1} mb="xl">Comanda - {selectedTable?.name}</Title>
             <Grid>
               <Grid.Col span={{ base: 12, md: 7 }}>
                 <Title order={2} mb="md">Cardápio</Title>
                 <ScrollArea h={600}>
-                  <Stack gap="sm">
-                    {products.map(p => (
-                      <Paper key={p.id} shadow="xs" p="md" withBorder onClick={() => addProductToOrder(p)} style={{ cursor: 'pointer' }}>
-                        <Group>
-                          <Image src={p.imageUrl || 'https://via.placeholder.com/40'} alt={p.name} h={40} w={40} fit="cover" radius="sm" />
-                          <Box style={{flex: 1}}>
-                            <Group justify="space-between">
-                              <Text fw={500}>{p.name}</Text>
-                              <Text>R$ {parseFloat(p.price).toFixed(2)}</Text>
-                            </Group>
-                          </Box>
-                        </Group>
-                      </Paper>
-                    ))}
-                  </Stack>
+                  <Stack gap="sm">{products.map(p => ( <Paper key={p.id} shadow="xs" p="md" withBorder onClick={() => addProductToOrder(p)} style={{ cursor: 'pointer' }}> <Group> <Image src={p.imageUrl || 'https://via.placeholder.com/40'} w={40} h={40} fit="cover" /> <Box style={{flex: 1}}> <Group justify="space-between"> <Text fw={500}>{p.name}</Text> <Text>R$ {parseFloat(p.price).toFixed(2)}</Text> </Group> </Box> </Group> </Paper> ))}</Stack>
                 </ScrollArea>
               </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 5 }}>
-                {/* ✨ ERRO ESTAVA AQUI (Botão Flutuante) ✨ */}
-                {renderOrderContent()}
-              </Grid.Col>
+              {!isMobile && (
+                <Grid.Col span={5}>{renderOrderContent()}</Grid.Col>
+              )}
             </Grid>
-            {/* ✨ CORREÇÃO: Botão flutuante e Drawer movidos para cá ✨ */}
             {isMobile && (
               <>
+                {/* CORREÇÃO 1: Removido shadow="xl" do Button */}
                 <Affix position={{ bottom: 20, right: 20 }}>
-                  <Button onClick={openCart} size="lg" radius="xl" /* shadow="md" <-- Propriedade inválida removida */>
-                    Ver Comanda ({orderItems.length}) - R$ {calculateTotal()}
-                  </Button>
+                  <Button onClick={openCart} size="lg" radius="xl">Ver Comanda ({orderItems.length})</Button>
                 </Affix>
-                <Drawer
-                  opened={cartDrawerOpen}
-                  onClose={closeCart}
-                  title={<Title order={3}>Comanda - {selectedTable?.name}</Title>}
-                  position="bottom"
-                  size="90%"
-                  withCloseButton
-                  shadow="md"
-                >
+                <Drawer opened={cartDrawerOpen} onClose={closeCart} title={`Comanda - ${selectedTable?.name}`} position="bottom" size="90%">
                   {renderOrderContent()}
                 </Drawer>
               </>
@@ -541,102 +405,122 @@ function App() {
       default:
         return (
           <Container size="lg" mt="md">
-            <Title order={1} mb="xl">Seleção de Mesas</Title>
+            <Title order={1} mb="xl">Mesas</Title>
             <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg" mb="xl" >
-              {tables.map(table => (
-                <Paper key={table.id} shadow="sm" p="lg" radius="md" withBorder onClick={() => handleSelectTable(table)} style={{ cursor: 'pointer', textAlign: 'center', backgroundColor: '#e8f5e9' }} mih={120} >
-                  <Text fw={700} size="xl">{table.name}</Text>
-                </Paper>
+              {/* CORREÇÃO 2: Estilos mesclados em um único objeto */}
+              {tables.map(table => ( 
+                <Paper 
+                  key={table.id} 
+                  shadow="sm" 
+                  p="lg" 
+                  radius="md" 
+                  withBorder 
+                  onClick={() => handleSelectTable(table)} 
+                  style={{ 
+                    cursor: 'pointer', 
+                    textAlign: 'center', 
+                    backgroundColor: '#e8f5e9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }} 
+                  mih={100} 
+                > 
+                  <Text fw={700} size="lg">{table.name}</Text> 
+                </Paper> 
               ))}
             </SimpleGrid>
             <hr style={{ margin: '30px 0', border: 'none', borderTop: '2px solid lightblue' }} />
-            <div>
-              <Title order={1} mb="xl">KDS - Cozinha</Title>
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-                {kdsOrders.length === 0 && <Text c="dimmed">Aguardando novos pedidos...</Text>}
-                {kdsOrders.map(order => (
-                  <Paper key={order.id} shadow="md" p="md" radius="md" withBorder style={{ background: '#fff9c4' }}>
-                    <Title order={3} mb="sm">Pedido #{order.id.substring(0, 6)}</Title>
-                    <List size="sm">
-                      {order.items.map(item => (
-                        <List.Item key={item.id}>
-                          <Text component="span" fw={700}>{item.quantity}x</Text> {item.product.name}
-                        </List.Item>
-                      ))}
-                    </List>
-                  </Paper>
-                ))}
-              </SimpleGrid>
-            </div>
+            <Title order={1} mb="xl">Cozinha (KDS)</Title>
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+              {kdsOrders.length === 0 && <Text c="dimmed">Nenhum pedido pendente.</Text>}
+              {kdsOrders.map(order => (
+                <Paper key={order.id} shadow="md" p="md" radius="md" withBorder bg="yellow.1">
+                  <Title order={3} mb="sm">#{order.id.substring(0, 4)}</Title>
+                  <List size="sm">{order.items.map(item => ( <List.Item key={item.id}><Text span fw={700}>{item.quantity}x</Text> {item.product.name}</List.Item> ))}</List>
+                </Paper>
+              ))}
+            </SimpleGrid>
           </Container>
         );
     }
   };
   
-  // --- Telas de Login / Registro ---
   if (!isAuthenticated) {
     if (appView === 'LOGIN') {
       return (
         <Container size={420} my={40}>
-          <Title ta="center">Login - Meu PDV</Title>
+          <Title ta="center">Login</Title>
           <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleLogin}>
             <Stack>
-              <TextInput label="Email" placeholder="seu@email.com" value={loginEmail} onChange={(event) => setLoginEmail(event.currentTarget.value)} required />
-              <PasswordInput label="Senha" placeholder="Sua senha" value={loginPassword} onChange={(event) => setLoginPassword(event.currentTarget.value)} required />
+              <TextInput label="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
+              <PasswordInput label="Senha" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
               {authError && <Text c="red" size="sm">{authError}</Text>}
-              <Button type="submit" mt="md">Entrar</Button>
-              <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('REGISTER')} size="sm">
-                Não tem uma conta? Crie sua empresa agora
-              </Anchor>
+              <Button type="submit" fullWidth>Entrar</Button>
+              <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('REGISTER')} size="sm" ta="center">Criar conta</Anchor>
             </Stack>
           </Paper>
         </Container>
       );
     }
-
-    if (appView === 'REGISTER') {
-      return (
-        <Container size={420} my={40}>
-          <Title ta="center">Crie sua Conta</Title>
-          <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleRegister}>
-            <Stack>
-              <TextInput label="Nome da Empresa" placeholder="Ex: Pizzaria do Zé" value={registerCompanyName} onChange={(event) => setRegisterCompanyName(event.currentTarget.value)} required />
-              <TextInput label="Seu Nome (Dono)" placeholder="Ex: José Silva" value={registerName} onChange={(event) => setRegisterName(event.currentTarget.value)} required />
-              <TextInput label="Email" placeholder="seu@email.com" value={registerEmail} onChange={(event) => setRegisterEmail(event.currentTarget.value)} required />
-              <PasswordInput label="Senha" placeholder="Crie uma senha forte" value={registerPassword} onChange={(event) => setRegisterPassword(event.currentTarget.value)} required />
-              {authError && <Text c="red" size="sm">{authError}</Text>}
-              <Button type="submit" mt="md">Registrar Empresa</Button>
-              <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('LOGIN')} size="sm">
-                Já tem uma conta? Faça login
-              </Anchor>
-            </Stack>
-          </Paper>
-        </Container>
-      );
-    }
+    return (
+      <Container size={420} my={40}>
+        <Title ta="center">Registro</Title>
+        <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleRegister}>
+          <Stack>
+            <TextInput label="Empresa" value={registerCompanyName} onChange={(e) => setRegisterCompanyName(e.target.value)} required />
+            <TextInput label="Nome" value={registerName} onChange={(e) => setRegisterName(e.target.value)} required />
+            <TextInput label="Email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} required />
+            <PasswordInput label="Senha" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} required />
+            {authError && <Text c="red" size="sm">{authError}</Text>}
+            <Button type="submit" fullWidth>Registrar</Button>
+            <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('LOGIN')} size="sm" ta="center">Voltar para login</Anchor>
+          </Stack>
+        </Paper>
+      </Container>
+    );
   }
 
-  // --- AppShell (Navegação principal) ---
   return (
-    <AppShell padding="md" header={{ height: 60 }}>
+    <AppShell
+      header={{ height: 60 }}
+      navbar={{
+        width: 300,
+        breakpoint: 'sm',
+        collapsed: { mobile: !mobileOpened, desktop: true },
+      }}
+      padding="md"
+    >
       <AppShell.Header>
         <Group h="100%" px="md">
+          <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
           <Title order={3}>Meu PDV</Title>
-          <Group justify="flex-end" style={{ flex: 1 }}>
-            <Button variant={currentView.includes('TABLE') || currentView.includes('ORDER') ? 'filled' : 'subtle'} onClick={() => setCurrentView('TABLE_SELECTION')}>Mesas & PDV</Button>
-            {userRole === 'DONO' && (
-              <>
-                <Button variant={currentView === 'DASHBOARD' ? 'filled' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dashboard</Button>
-                <Button variant={currentView === 'MANAGEMENT' ? 'filled' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
-                <Button variant={currentView === 'FINANCIAL' ? 'filled' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Financeiro</Button>
-              </>
-            )}
-            <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button>
+          <Group ml="xl" gap={0} visibleFrom="sm">
+            <Button variant={currentView.includes('TABLE') ? 'light' : 'subtle'} onClick={() => setCurrentView('TABLE_SELECTION')}>PDV</Button>
+            {userRole === 'DONO' && <>
+              <Button variant={currentView === 'DASHBOARD' ? 'light' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dash</Button>
+              <Button variant={currentView === 'MANAGEMENT' ? 'light' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
+              <Button variant={currentView === 'FINANCIAL' ? 'light' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Finan</Button>
+            </>}
           </Group>
+           <Button variant="default" ml="auto" onClick={handleLogout}>Sair</Button>
         </Group>
       </AppShell.Header>
+
+      <AppShell.Navbar p="md">
+        <Stack>
+          <Button variant="subtle" onClick={() => { setCurrentView('TABLE_SELECTION'); toggleMobile(); }}>Mesas & PDV</Button>
+          {userRole === 'DONO' && <>
+            <Button variant="subtle" onClick={() => { setCurrentView('DASHBOARD'); toggleMobile(); }}>Dashboard</Button>
+            <Button variant="subtle" onClick={() => { setCurrentView('MANAGEMENT'); toggleMobile(); }}>Gestão</Button>
+            <Button variant="subtle" onClick={() => { setCurrentView('FINANCIAL'); toggleMobile(); }}>Financeiro</Button>
+          </>}
+          <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button>
+        </Stack>
+      </AppShell.Navbar>
+
       <AppShell.Main>
-        <Container size="xl">
+        <Container size="xl" p={0}>
           {renderView()}
         </Container>
       </AppShell.Main>
