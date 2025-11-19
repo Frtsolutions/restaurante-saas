@@ -4,16 +4,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  // URL para a APLICAÇÃO (usa o pooler)
-  url = env("DATABASE_URL") 
-  // URL para MIGRAÇÕES (usa a conexão direta)
-  directUrl = env("DIRECT_DATABASE_URL")
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL") // Caso esteja usando a config de 2 URLs
 }
 
 model Company {
-  id    String @id @default(uuid())
-  name  String
-
+  id            String                 @id @default(uuid())
+  name          String
   users         User[]
   products      Product[]
   ingredients   Ingredient[]
@@ -63,17 +60,15 @@ model RecipeItem {
 }
 
 model Product {
-  id          String       @id @default(uuid())
+  id          String      @id @default(uuid())
   name        String
   price       Decimal
-  createdAt   DateTime     @default(now())
+  imageUrl    String?
+  createdAt   DateTime    @default(now())
   orderItems  OrderItem[]
   recipeItems RecipeItem[]
   companyId   String
-  company     Company      @relation(fields: [companyId], references: [id])
-
-  // --- ✨ ADIÇÃO AQUI ✨ ---
-  imageUrl    String? // Coluna opcional para o link da imagem
+  company     Company     @relation(fields: [companyId], references: [id])
 
   @@unique([name, companyId])
 }
@@ -81,24 +76,34 @@ model Product {
 model Table {
   id        String  @id @default(uuid())
   name      String
-  orders    Order[]
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
+  
+  // ✨ RELAÇÃO IMPORTANTE: Uma mesa tem vários pedidos
+  orders    Order[] 
 
   @@unique([name, companyId])
 }
 
 model Order {
-  id        String      @id @default(uuid())
-  total     Decimal
-  createdAt DateTime    @default(now())
-  items     OrderItem[]
-  tableId   String?
-  table     Table?      @relation(fields: [tableId], references: [id])
-  userId    String?
-  user      User?       @relation(fields: [userId], references: [id])
-  companyId String
-  company   Company     @relation(fields: [companyId], references: [id])
+  id            String      @id @default(uuid())
+  total         Decimal
+  createdAt     DateTime    @default(now())
+  
+  // ✨ NOVOS CAMPOS ✨
+  status        String      @default("PENDING") // 'PENDING', 'READY', 'PAID'
+  paymentMethod String?     // 'CREDIT', 'DEBIT', 'PIX', 'CASH'
+
+  items         OrderItem[]
+  
+  tableId       String?
+  table         Table?      @relation(fields: [tableId], references: [id])
+  
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id])
+  
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id])
 }
 
 model OrderItem {

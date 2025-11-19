@@ -37,7 +37,7 @@ interface User {
   companyId: string;
 }
 
-// URL da API (Render ou Local)
+// URL da API
 const API_URL = 'https://meu-pdv-backend.onrender.com'; 
 const socket = io(API_URL);
 
@@ -389,7 +389,6 @@ function App() {
             </Grid>
             {isMobile && (
               <>
-                {/* CORREÇÃO 1: Removido shadow="xl" do Button */}
                 <Affix position={{ bottom: 20, right: 20 }}>
                   <Button onClick={openCart} size="lg" radius="xl">Ver Comanda ({orderItems.length})</Button>
                 </Affix>
@@ -406,8 +405,8 @@ function App() {
         return (
           <Container size="lg" mt="md">
             <Title order={1} mb="xl">Mesas</Title>
+            {/* CORREÇÃO AQUI: Mesclando estilos para remover duplicidade */}
             <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg" mb="xl" >
-              {/* CORREÇÃO 2: Estilos mesclados em um único objeto */}
               {tables.map(table => ( 
                 <Paper 
                   key={table.id} 
@@ -420,9 +419,9 @@ function App() {
                     cursor: 'pointer', 
                     textAlign: 'center', 
                     backgroundColor: '#e8f5e9',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    display: 'flex', // Mesclado
+                    alignItems: 'center', // Mesclado
+                    justifyContent: 'center' // Mesclado
                   }} 
                   mih={100} 
                 > 
