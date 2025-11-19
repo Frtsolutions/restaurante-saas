@@ -37,7 +37,7 @@ interface User {
   companyId: string;
 }
 
-const socket = io('http://localhost:3333');
+const socket = io('https://meu-pdv-backend.onrender.com');
 
 // ==================================================================
 // COMPONENTE PRINCIPAL APP
@@ -115,7 +115,7 @@ function App() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      axios.get('http://localhost:3333/products')
+      axios.get('https://meu-pdv-backend.onrender.com/products')
         .then(response => setProducts(response.data))
         .catch(error => {
           console.error("Erro ao buscar produtos:", error);
@@ -136,21 +136,21 @@ function App() {
       }
       switch (currentView) {
         case 'DASHBOARD':
-          axios.get('http://localhost:3333/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro...", error));
+          axios.get('https://meu-pdv-backend.onrender.com/dashboard/today').then(response => setDashboardData(response.data)).catch(error => console.error("Erro...", error));
           break;
         case 'MANAGEMENT':
-          axios.get('http://localhost:3333/ingredients').then(response => {
+          axios.get('https://meu-pdv-backend.onrender.com/ingredients').then(response => {
             setIngredients(response.data);
             if(response.data.length > 0 && !selectedIngredientId) { setSelectedIngredientId(response.data[0].id); }
           }).catch(error => console.error("Erro...", error));
-          axios.get('http://localhost:3333/products').then(response => setProducts(response.data)).catch(error => console.error("Erro...", error));
-          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
+          axios.get('https://meu-pdv-backend.onrender.com/products').then(response => setProducts(response.data)).catch(error => console.error("Erro...", error));
+          axios.get('https://meu-pdv-backend.onrender.com/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
           break;
         case 'TABLE_SELECTION':
-          axios.get('http://localhost:3333/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
+          axios.get('https://meu-pdv-backend.onrender.com/tables').then(response => setTables(response.data)).catch(error => console.error("Erro...", error));
           break;
         case 'FINANCIAL':
-          axios.get('http://localhost:3333/financial/transactions').then(response => setTransactions(response.data)).catch(error => console.error("Erro...", error));
+          axios.get('https://meu-pdv-backend.onrender.com/financial/transactions').then(response => setTransactions(response.data)).catch(error => console.error("Erro...", error));
           break;
       }
     }
@@ -163,7 +163,7 @@ function App() {
     event.preventDefault();
     setAuthError('');
     try {
-      const response = await axios.post('http://localhost:3333/auth/login', { email: loginEmail, password: loginPassword });
+      const response = await axios.post('https://meu-pdv-backend.onrender.com/auth/login', { email: loginEmail, password: loginPassword });
       const { token, user } = response.data;
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(user));
@@ -181,8 +181,8 @@ function App() {
     setAuthError('');
     const payload = { email: registerEmail, name: registerName, password: registerPassword, companyName: registerCompanyName };
     try {
-      await axios.post('http://localhost:3333/auth/register', payload);
-      const loginResponse = await axios.post('http://localhost:3333/auth/login', { email: registerEmail, password: registerPassword });
+      await axios.post('https://meu-pdv-backend.onrender.com/auth/register', payload);
+      const loginResponse = await axios.post('https://meu-pdv-backend.onrender.com/auth/login', { email: registerEmail, password: registerPassword });
       const { token, user } = loginResponse.data;
       localStorage.setItem('authToken', token);
       localStorage.setItem('userData', JSON.stringify(user));
@@ -220,7 +220,7 @@ function App() {
   async function handleFinalizeOrder() {
     const payload = { tableId: selectedTable?.id, items: orderItems.map(item => ({ productId: item.id, quantity: item.quantity })) };
     try { 
-      await axios.post('http://localhost:3333/orders', payload); 
+      await axios.post('https://meu-pdv-backend.onrender.com/orders', payload); 
       alert(`Pedido ${selectedTable?.name} finalizado!`);
       if (isMobile) {
         closeCart();
@@ -233,7 +233,7 @@ function App() {
   async function handleCreateIngredient(event: FormEvent) {
     event.preventDefault(); if (!newIngredientName || !newIngredientQuantity) { alert('Preencha nome/qtd.'); return; }
     const payload = { name: newIngredientName, stockQuantity: parseFloat(newIngredientQuantity), unit: newIngredientUnit };
-    try { const response = await axios.post('http://localhost:3333/ingredients', payload); setIngredients([...ingredients, response.data]); setNewIngredientName(''); setNewIngredientQuantity(''); setNewIngredientUnit('un'); alert('Ingrediente criado!'); }
+    try { const response = await axios.post('https://meu-pdv-backend.onrender.com/ingredients', payload); setIngredients([...ingredients, response.data]); setNewIngredientName(''); setNewIngredientQuantity(''); setNewIngredientUnit('un'); alert('Ingrediente criado!'); }
     catch (error) { console.error("Erro...", error); alert('Erro...'); }
   }
   function handleAddIngredientToRecipe() {
@@ -257,13 +257,13 @@ function App() {
       }))
     };
     try {
-      const productResponse = await axios.post('http://localhost:3333/products', productPayload);
+      const productResponse = await axios.post('https://meu-pdv-backend.onrender.com/products', productPayload);
       let newProduct: Product = productResponse.data;
       if (newProductImage) { // ✨ ERRO ESTAVA AQUI (newProductImage)
         const formData = new FormData();
         formData.append('image', newProductImage); // ✨ ERRO ESTAVA AQUI (newProductImage)
         const uploadResponse = await axios.post(
-          `http://localhost:3333/products/${newProduct.id}/upload`,
+          `https://meu-pdv-backend.onrender.com/products/${newProduct.id}/upload`,
           formData,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         );
@@ -284,7 +284,7 @@ function App() {
   async function handleCreateTransaction(event: FormEvent) {
     event.preventDefault(); if (!newTransactionDesc || !newTransactionAmount) { alert('Preencha desc/valor.'); return; }
     const payload = { description: newTransactionDesc, amount: parseFloat(newTransactionAmount), type: newTransactionType, dueDate: newTransactionDueDate || null };
-    try { const response = await axios.post('http://localhost:3333/financial/transactions', payload); setTransactions([response.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionType('DESPESA'); setNewTransactionDueDate(''); alert('Transação registrada!'); }
+    try { const response = await axios.post('https://meu-pdv-backend.onrender.com/financial/transactions', payload); setTransactions([response.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionType('DESPESA'); setNewTransactionDueDate(''); alert('Transação registrada!'); }
     catch (error) { console.error('Erro...', error); alert('Erro...'); }
   }
   async function handleCreateTable(event: FormEvent) {
@@ -294,7 +294,7 @@ function App() {
       return;
     }
     try {
-      const response = await axios.post('http://localhost:3333/tables', { name: newTableName });
+      const response = await axios.post('https://meu-pdv-backend.onrender.com/tables', { name: newTableName });
       setTables([...tables, response.data]);
       setNewTableName('');
       alert('Mesa criada com sucesso!');
