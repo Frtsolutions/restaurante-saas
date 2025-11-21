@@ -20,7 +20,7 @@ const io = new Server(server, {
 });
 
 const prisma = new PrismaClient();
-const port = 3333;
+const port = process.env.PORT || 3333;
 
 const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY || "SEU_PROJETO_ESTA_FICANDO_INCRIVEL";
 
