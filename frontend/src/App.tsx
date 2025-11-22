@@ -3,7 +3,12 @@ import type { FormEvent } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 // Importações do Mantine
-import { AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, PasswordInput, Anchor, FileInput, Image, Box, Drawer, Affix, Burger } from '@mantine/core';
+import { 
+  AppShell, Group, Button, Title, Container, Tabs, TextInput, NumberInput, 
+  Select, Stack, Table, Paper, SimpleGrid, Text, List, Grid, ScrollArea, 
+  PasswordInput, Anchor, FileInput, Image, Box, Drawer, Affix, Burger, 
+  Modal, Badge, Divider 
+} from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 
 // ==================================================================
@@ -11,44 +16,39 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 // ==================================================================
 interface Product { id: string; name: string; price: string; imageUrl: string | null; }
 interface OrderItem extends Product { quantity: number; }
-interface FullOrder { id:string; total: number; createdAt: string; items: { id: string; quantity: number; product: Product; }[]; }
+interface FullOrder { 
+  id: string; 
+  total: number; 
+  createdAt: string; 
+  status: string; 
+  items: { id: string; quantity: number; product: Product; }[]; 
+}
 interface DashboardData { totalRevenue: number; orderCount: number; topProducts: { productId: string; name: string; quantitySold: number; }[]; }
-interface Table { id: string; name: string; }
-interface Ingredient { id: string; name: string; stockQuantity: string; unit: string; }
-interface FinancialTransaction {
-  id: string;
-  description: string;
-  amount: string;
-  type: string;
-  dueDate: string | null;
-  paidAt: string | null;
-  createdAt: string;
-}
-interface RecipeItemForm {
-  ingredientId: string;
-  name: string;
-  quantity: string;
-}
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'DONO' | 'CAIXA';
-  companyId: string;
+
+// RENOMEADO PARA EVITAR CONFLITO COM O COMPONENTE TABLE DO MANTINE
+interface TableData { 
+  id: string; 
+  name: string; 
+  currentTotal?: number; 
+  activeOrders?: FullOrder[]; 
 }
 
-// URL da API
+interface Ingredient { id: string; name: string; stockQuantity: string; unit: string; }
+interface FinancialTransaction { id: string; description: string; amount: string; type: string; dueDate: string | null; paidAt: string | null; createdAt: string; }
+interface RecipeItemForm { ingredientId: string; name: string; quantity: string; }
+interface User { id: string; name: string; email: string; role: 'DONO' | 'CAIXA'; companyId: string; }
+
+// CONFIG API
 const API_URL = 'https://meu-pdv-backend.onrender.com'; 
 const socket = io(API_URL);
 
-// ==================================================================
-// COMPONENTE PRINCIPAL APP
-// ==================================================================
 function App() {
-  // --- Estados de Autenticação ---
+  // --- Estados ---
   const [appView, setAppView] = useState('LOGIN');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userRole, setUserRole] = useState<User['role'] | null>(null);
+  
+  // Login/Registro
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -57,36 +57,40 @@ function App() {
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerCompanyName, setRegisterCompanyName] = useState('');
 
-  // --- Estados do App ---
+  // Dados do App
   const [currentView, setCurrentView] = useState('TABLE_SELECTION');
   const [products, setProducts] = useState<Product[]>([]);
-  const [tables, setTables] = useState<Table[]>([]);
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+  const [tables, setTables] = useState<TableData[]>([]); // Usando a nova interface
+  const [selectedTable, setSelectedTable] = useState<TableData | null>(null); // Usando a nova interface
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [kdsOrders, setKdsOrders] = useState<FullOrder[]>([]);
   const [dashboardData, setDashboardData] = useState<DashboardData>({ totalRevenue: 0, orderCount: 0, topProducts: [] });
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
+
+  // Controles de UI/Formulários
+  const [managementSubView, setManagementSubView] = useState<string | null>('insumos');
   const [newIngredientName, setNewIngredientName] = useState('');
   const [newIngredientQuantity, setNewIngredientQuantity] = useState('');
   const [newIngredientUnit, setNewIngredientUnit] = useState('un');
-  const [managementSubView, setManagementSubView] = useState<string | null>('insumos');
   const [newProductName, setNewProductName] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [recipeItems, setRecipeItems] = useState<RecipeItemForm[]>([]);
   const [selectedIngredientId, setSelectedIngredientId] = useState('');
   const [selectedIngredientQuantity, setSelectedIngredientQuantity] = useState('');
   const [newProductImage, setNewProductImage] = useState<File | null>(null);
-  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
+  const [newTableName, setNewTableName] = useState('');
   const [newTransactionDesc, setNewTransactionDesc] = useState('');
   const [newTransactionAmount, setNewTransactionAmount] = useState('');
   const [newTransactionType, setNewTransactionType] = useState('DESPESA');
   const [newTransactionDueDate, setNewTransactionDueDate] = useState('');
-  const [newTableName, setNewTableName] = useState('');
-  
-  // --- Hooks para UI Responsiva ---
+
+  // --- Hooks UI Responsiva ---
   const [cartDrawerOpen, { open: openCart, close: closeCart }] = useDisclosure(false);
   const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [paymentModalOpen, { open: openPaymentModal, close: closePaymentModal }] = useDisclosure(false);
+  const [paymentMethod, setPaymentMethod] = useState('CREDIT');
 
   // --- Efeitos ---
   useEffect(() => {
@@ -102,182 +106,138 @@ function App() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      axios.get(`${API_URL}/products`)
-        .then(response => setProducts(response.data))
-        .catch(error => {
-          if (error.response && error.response.status === 401) handleLogout();
-        });
-      socket.on('new_order', (newOrder: FullOrder) => setKdsOrders(prevOrders => [newOrder, ...prevOrders]));
+      axios.get(`${API_URL}/products`).then(r => setProducts(r.data)).catch(() => {});
+      
+      socket.on('new_order', (newOrder) => {
+        setKdsOrders(prev => [newOrder, ...prev]);
+        refreshTables(); 
+      });
+      socket.on('order_updated', () => refreshTables());
     }
-    return () => { socket.off('new_order'); };
+    return () => { socket.off('new_order'); socket.off('order_updated'); };
   }, [isAuthenticated]);
+
+  const refreshTables = () => {
+    axios.get(`${API_URL}/tables`).then(r => {
+      setTables(r.data);
+      if (selectedTable) {
+        const updated = r.data.find((t: TableData) => t.id === selectedTable.id);
+        if (updated) setSelectedTable(updated);
+      }
+    }).catch(console.error);
+  };
 
   useEffect(() => {
     if (isAuthenticated && currentView) {
       if (mobileOpened) toggleMobile();
-
-      if (userRole === 'CAIXA' && (currentView === 'DASHBOARD' || currentView === 'MANAGEMENT' || currentView === 'FINANCIAL')) {
-        setCurrentView('TABLE_SELECTION');
-        return;
-      }
-      switch (currentView) {
-        case 'DASHBOARD':
-          axios.get(`${API_URL}/dashboard/today`).then(response => setDashboardData(response.data)).catch(console.error);
-          break;
-        case 'MANAGEMENT':
-          axios.get(`${API_URL}/ingredients`).then(response => {
-            setIngredients(response.data);
-            if(response.data.length > 0 && !selectedIngredientId) { setSelectedIngredientId(response.data[0].id); }
-          }).catch(console.error);
-          axios.get(`${API_URL}/products`).then(response => setProducts(response.data)).catch(console.error);
-          axios.get(`${API_URL}/tables`).then(response => setTables(response.data)).catch(console.error);
-          break;
-        case 'TABLE_SELECTION':
-          axios.get(`${API_URL}/tables`).then(response => setTables(response.data)).catch(console.error);
-          break;
-        case 'FINANCIAL':
-          axios.get(`${API_URL}/financial/transactions`).then(response => setTransactions(response.data)).catch(console.error);
-          break;
-      }
+      const fetchData = async () => {
+        try {
+          if (currentView === 'DASHBOARD') setDashboardData((await axios.get(`${API_URL}/dashboard/today`)).data);
+          if (currentView === 'MANAGEMENT') {
+            setIngredients((await axios.get(`${API_URL}/ingredients`)).data);
+            setProducts((await axios.get(`${API_URL}/products`)).data);
+            setTables((await axios.get(`${API_URL}/tables`)).data);
+          }
+          if (currentView === 'TABLE_SELECTION' || currentView === 'ORDER') {
+             setTables((await axios.get(`${API_URL}/tables`)).data);
+          }
+          if (currentView === 'FINANCIAL') setTransactions((await axios.get(`${API_URL}/financial/transactions`)).data);
+        } catch (e) { console.error(e); }
+      };
+      fetchData();
     }
-  }, [currentView, isAuthenticated, userRole]);
+  }, [currentView, isAuthenticated]);
 
-
-  // --- Funções ---
-  async function handleLogin(event: FormEvent) {
-    event.preventDefault();
-    setAuthError('');
-    try {
-      const response = await axios.post(`${API_URL}/auth/login`, { email: loginEmail, password: loginPassword });
-      const { token, user } = response.data;
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('userData', JSON.stringify(user));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUserRole(user.role);
-      setIsAuthenticated(true);
-    } catch (error) {
-      setAuthError('Email ou senha inválidos.');
-    }
-  }
-
-  async function handleRegister(event: FormEvent) {
-    event.preventDefault();
-    setAuthError('');
-    try {
-      await axios.post(`${API_URL}/auth/register`, { email: registerEmail, name: registerName, password: registerPassword, companyName: registerCompanyName });
-      const loginResponse = await axios.post(`${API_URL}/auth/login`, { email: registerEmail, password: registerPassword });
-      const { token, user } = loginResponse.data;
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('userData', JSON.stringify(user));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      setUserRole(user.role);
-      setIsAuthenticated(true);
-    } catch (error: any) {
-      setAuthError('Erro ao registrar.');
-    }
-  }
-
-  function handleLogout() {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userData');
+  // --- Funções Auxiliares ---
+  const handleLogout = () => {
+    localStorage.clear();
     delete axios.defaults.headers.common['Authorization'];
     setIsAuthenticated(false);
     setUserRole(null);
+  };
+
+  // --- Lógica de Negócio ---
+  async function handleOrderReady(orderId: string) {
+    try { await axios.patch(`${API_URL}/orders/${orderId}/ready`); setKdsOrders(prev => prev.filter(o => o.id !== orderId)); } catch { alert('Erro'); }
   }
 
-  function handleSelectTable(table: Table) { setSelectedTable(table); setCurrentView('ORDER'); }
+  async function handlePayTab() {
+    if (!selectedTable) return;
+    try {
+      await axios.post(`${API_URL}/tables/${selectedTable.id}/pay`, { paymentMethod });
+      alert('Conta fechada com sucesso!');
+      closePaymentModal();
+      handleGoBackToTables();
+      refreshTables();
+    } catch { alert('Erro ao fechar conta.'); }
+  }
+
+  function handleSelectTable(table: TableData) { setSelectedTable(table); setCurrentView('ORDER'); }
   function handleGoBackToTables() { setSelectedTable(null); setOrderItems([]); setCurrentView('TABLE_SELECTION'); }
+  
   function addProductToOrder(product: Product) {
     const existing = orderItems.find(item => item.id === product.id);
     if (existing) { setOrderItems(orderItems.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)); }
     else { setOrderItems([...orderItems, { ...product, quantity: 1 }]); }
   }
-  const calculateTotal = () => orderItems.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0).toFixed(2);
+  const calculateTotalNew = () => orderItems.reduce((total, item) => total + (parseFloat(item.price) * item.quantity), 0).toFixed(2);
+  const calculateTotalTable = () => ((selectedTable?.currentTotal || 0) + Number(calculateTotalNew())).toFixed(2);
   
   async function handleFinalizeOrder() {
     const payload = { tableId: selectedTable?.id, items: orderItems.map(item => ({ productId: item.id, quantity: item.quantity })) };
     try { 
       await axios.post(`${API_URL}/orders`, payload); 
-      alert(`Pedido ${selectedTable?.name} finalizado!`);
+      alert(`Pedido enviado para a cozinha!`);
+      setOrderItems([]);
       if (isMobile) closeCart();
-      handleGoBackToTables();
-    }
-    catch (error) { alert('Erro ao finalizar.'); }
-  }
-  
-  async function handleCreateIngredient(event: FormEvent) {
-    event.preventDefault(); if (!newIngredientName || !newIngredientQuantity) return;
-    const payload = { name: newIngredientName, stockQuantity: parseFloat(newIngredientQuantity), unit: newIngredientUnit };
-    try { const response = await axios.post(`${API_URL}/ingredients`, payload); setIngredients([...ingredients, response.data]); setNewIngredientName(''); setNewIngredientQuantity(''); alert('Criado!'); }
-    catch (error) { alert('Erro ao criar.'); }
-  }
-  function handleAddIngredientToRecipe() {
-    if (!selectedIngredientId || !selectedIngredientQuantity) return;
-    const ingredient = ingredients.find(ing => ing.id === selectedIngredientId);
-    if (ingredient) { setRecipeItems([...recipeItems, { ingredientId: ingredient.id, name: ingredient.name, quantity: selectedIngredientQuantity }]); setSelectedIngredientQuantity(''); }
-  }
-  
-  async function handleCreateProduct(event: FormEvent) {
-    event.preventDefault();
-    if (!newProductName || !newProductPrice) return;
-    const productPayload = { name: newProductName, price: parseFloat(newProductPrice), recipeItems: recipeItems.map(item => ({ ingredientId: item.ingredientId, quantity: parseFloat(item.quantity) })) };
-    try {
-      const productResponse = await axios.post(`${API_URL}/products`, productPayload);
-      let newProduct: Product = productResponse.data;
-      if (newProductImage) {
-        const formData = new FormData();
-        formData.append('image', newProductImage);
-        const uploadResponse = await axios.post(`${API_URL}/products/${newProduct.id}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-        newProduct = uploadResponse.data;
-      }
-      setProducts(prevProducts => [...prevProducts, newProduct]);
-      setNewProductName(''); setNewProductPrice(''); setRecipeItems([]); setNewProductImage(null);
-      alert('Produto criado!');
-    } catch (error) { alert('Erro ao criar.'); }
+      refreshTables();
+    } catch { alert('Erro ao enviar.'); }
   }
 
-  async function handleCreateTransaction(event: FormEvent) {
-    event.preventDefault(); if (!newTransactionDesc || !newTransactionAmount) return;
-    const payload = { description: newTransactionDesc, amount: parseFloat(newTransactionAmount), type: newTransactionType, dueDate: newTransactionDueDate || null };
-    try { const response = await axios.post(`${API_URL}/financial/transactions`, payload); setTransactions([response.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionDueDate(''); alert('Registrado!'); }
-    catch (error) { alert('Erro.'); }
-  }
-  async function handleCreateTable(event: FormEvent) {
-    event.preventDefault(); if (!newTableName) return;
-    try { const response = await axios.post(`${API_URL}/tables`, { name: newTableName }); setTables([...tables, response.data]); setNewTableName(''); alert('Mesa criada!'); } 
-    catch (error) { alert('Erro.'); }
-  }
+  // --- CRIAÇÃO DE DADOS (Gestão) ---
+  async function handleLogin(e: FormEvent) { e.preventDefault(); setAuthError(''); try { const r = await axios.post(`${API_URL}/auth/login`, { email: loginEmail, password: loginPassword }); localStorage.setItem('authToken', r.data.token); localStorage.setItem('userData', JSON.stringify(r.data.user)); axios.defaults.headers.common['Authorization'] = `Bearer ${r.data.token}`; setUserRole(r.data.user.role); setIsAuthenticated(true); } catch { setAuthError('Email ou senha inválidos.'); } }
+  async function handleRegister(e: FormEvent) { e.preventDefault(); setAuthError(''); try { await axios.post(`${API_URL}/auth/register`, { email: registerEmail, name: registerName, password: registerPassword, companyName: registerCompanyName }); const r = await axios.post(`${API_URL}/auth/login`, { email: registerEmail, password: registerPassword }); localStorage.setItem('authToken', r.data.token); localStorage.setItem('userData', JSON.stringify(r.data.user)); axios.defaults.headers.common['Authorization'] = `Bearer ${r.data.token}`; setUserRole(r.data.user.role); setIsAuthenticated(true); } catch { setAuthError('Erro ao registrar.'); } }
+  
+  async function handleCreateIngredient(e: FormEvent) { e.preventDefault(); if (!newIngredientName) return; try { const r = await axios.post(`${API_URL}/ingredients`, { name: newIngredientName, stockQuantity: parseFloat(newIngredientQuantity), unit: newIngredientUnit }); setIngredients([...ingredients, r.data]); setNewIngredientName(''); setNewIngredientQuantity(''); alert('Criado!'); } catch { alert('Erro'); } }
+  function handleAddIngredientToRecipe() { if (!selectedIngredientId) return; const i = ingredients.find(ig => ig.id === selectedIngredientId); if (i) { setRecipeItems([...recipeItems, { ingredientId: i.id, name: i.name, quantity: selectedIngredientQuantity }]); setSelectedIngredientQuantity(''); } }
+  
+  async function handleCreateProduct(e: FormEvent) { e.preventDefault(); if (!newProductName) return; const pl = { name: newProductName, price: parseFloat(newProductPrice), recipeItems: recipeItems.map(i => ({ ingredientId: i.ingredientId, quantity: parseFloat(i.quantity) })) }; try { const r = await axios.post(`${API_URL}/products`, pl); let np = r.data; if (newProductImage) { const fd = new FormData(); fd.append('image', newProductImage); const up = await axios.post(`${API_URL}/products/${np.id}/upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); np = up.data; } setProducts([...products, np]); setNewProductName(''); setNewProductPrice(''); setRecipeItems([]); setNewProductImage(null); alert('Criado!'); } catch { alert('Erro'); } }
+  async function handleCreateTransaction(e: FormEvent) { e.preventDefault(); if (!newTransactionDesc) return; const pl = { description: newTransactionDesc, amount: parseFloat(newTransactionAmount), type: newTransactionType, dueDate: newTransactionDueDate || null }; try { const r = await axios.post(`${API_URL}/financial/transactions`, pl); setTransactions([r.data, ...transactions]); setNewTransactionDesc(''); setNewTransactionAmount(''); setNewTransactionDueDate(''); alert('Registrado!'); } catch { alert('Erro'); } }
+  async function handleCreateTable(e: FormEvent) { e.preventDefault(); if (!newTableName) return; try { const r = await axios.post(`${API_URL}/tables`, { name: newTableName }); setTables([...tables, r.data]); setNewTableName(''); alert('Criada!'); } catch { alert('Erro'); } }
 
-  // --- Conteúdo da Comanda Reutilizável ---
+  // --- RENDERIZAÇÃO DA COMANDA ---
   const renderOrderContent = () => (
     <Paper shadow="xs" p="md" withBorder>
-      <Title order={2} mb="md">Itens</Title>
-      {orderItems.length === 0 ? ( <Text c="dimmed">Nenhum item adicionado.</Text> ) : (
+      {selectedTable?.activeOrders && selectedTable.activeOrders.length > 0 && (
+        <>
+          <Title order={4} mb="xs" c="dimmed">Já Pedidos</Title>
+          <List spacing="xs" size="sm" mb="md">
+            {selectedTable.activeOrders.map(order => (
+              order.items.map(item => ( <List.Item key={item.id}> <Text c="dimmed">{item.quantity}x {item.product.name} - R$ {(Number(item.product.price) * item.quantity).toFixed(2)}</Text> </List.Item> ))
+            ))}
+          </List>
+          <Divider my="sm" />
+        </>
+      )}
+
+      <Title order={4} mb="xs" c="blue">Novo Pedido</Title>
+      {orderItems.length === 0 ? ( <Text c="dimmed" size="sm">Nenhum item novo.</Text> ) : (
         <ScrollArea h={isMobile ? "calc(100vh - 250px)" : 400}>
           <List spacing="sm" size="sm" mb="md">
-            {orderItems.map(item => (
-              <List.Item key={item.id}>
-                <Group justify="space-between">
-                  <Text>{item.name} (x{item.quantity})</Text>
-                  <Text fw={500}>R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</Text>
-                </Group>
-              </List.Item>
-            ))}
+            {orderItems.map(item => ( <List.Item key={item.id}> <Group justify="space-between"> <Text>{item.name} (x{item.quantity})</Text> <Text fw={500}>R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</Text> </Group> </List.Item> ))}
           </List>
         </ScrollArea>
       )}
       <hr />
       <Group justify="space-between" mt="md">
-        <Title order={3}>Total:</Title>
-        <Title order={3}>R$ {calculateTotal()}</Title>
+        <Title order={3}>Total Mesa:</Title>
+        <Title order={3}>R$ {calculateTotalTable()}</Title>
       </Group>
-      <Button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} fullWidth color="green" mt="xl" size="lg" >
-        Finalizar Pedido
-      </Button>
+      <Button onClick={handleFinalizeOrder} disabled={orderItems.length === 0} fullWidth color="green" mt="md" size="lg" >Enviar p/ Cozinha</Button>
     </Paper>
   );
 
-  // --- Renderização ---
+  // --- RENDERIZAÇÃO PRINCIPAL ---
   const renderView = () => {
     switch (currentView) {
       case 'DASHBOARD':
@@ -374,8 +334,13 @@ function App() {
       case 'ORDER':
         return (
           <Container size="lg" mt="md">
-            <Button onClick={handleGoBackToTables} variant="light" mb="md" leftSection={'←'}>Voltar</Button>
-            <Title order={1} mb="xl">Comanda - {selectedTable?.name}</Title>
+            <Group justify="space-between" mb="md">
+              <Button onClick={handleGoBackToTables} variant="light" leftSection={'←'}>Voltar</Button>
+              <Title order={3}>{selectedTable?.name}</Title>
+              <Button color="red" onClick={openPaymentModal} disabled={(selectedTable?.currentTotal || 0) <= 0}>
+                Fechar Conta (R$ {calculateTotalTable()})
+              </Button>
+            </Group>
             <Grid>
               <Grid.Col span={{ base: 12, md: 7 }}>
                 <Title order={2} mb="md">Cardápio</Title>
@@ -383,20 +348,17 @@ function App() {
                   <Stack gap="sm">{products.map(p => ( <Paper key={p.id} shadow="xs" p="md" withBorder onClick={() => addProductToOrder(p)} style={{ cursor: 'pointer' }}> <Group> <Image src={p.imageUrl || 'https://via.placeholder.com/40'} w={40} h={40} fit="cover" /> <Box style={{flex: 1}}> <Group justify="space-between"> <Text fw={500}>{p.name}</Text> <Text>R$ {parseFloat(p.price).toFixed(2)}</Text> </Group> </Box> </Group> </Paper> ))}</Stack>
                 </ScrollArea>
               </Grid.Col>
-              {!isMobile && (
-                <Grid.Col span={5}>{renderOrderContent()}</Grid.Col>
-              )}
+              {!isMobile && ( <Grid.Col span={5}>{renderOrderContent()}</Grid.Col> )}
             </Grid>
-            {isMobile && (
-              <>
-                <Affix position={{ bottom: 20, right: 20 }}>
-                  <Button onClick={openCart} size="lg" radius="xl">Ver Comanda ({orderItems.length})</Button>
-                </Affix>
-                <Drawer opened={cartDrawerOpen} onClose={closeCart} title={`Comanda - ${selectedTable?.name}`} position="bottom" size="90%">
-                  {renderOrderContent()}
-                </Drawer>
-              </>
-            )}
+            {isMobile && ( <> <Affix position={{ bottom: 20, right: 20 }}> <Button onClick={openCart} size="lg" radius="xl">Ver Comanda</Button> </Affix> <Drawer opened={cartDrawerOpen} onClose={closeCart} title={`Comanda - ${selectedTable?.name}`} position="bottom" size="90%"> {renderOrderContent()} </Drawer> </> )}
+            
+            <Modal opened={paymentModalOpen} onClose={closePaymentModal} title="Fechar Conta">
+              <Stack>
+                <Title order={2} ta="center">Total: R$ {Number(selectedTable?.currentTotal || 0).toFixed(2)}</Title>
+                <Select label="Forma de Pagamento" data={['CREDIT', 'DEBIT', 'CASH', 'PIX']} value={paymentMethod} onChange={(v) => setPaymentMethod(v || 'CREDIT')} allowDeselect={false} />
+                <Button color="red" fullWidth onClick={handlePayTab} size="lg" mt="md">Confirmar Pagamento</Button>
+              </Stack>
+            </Modal>
           </Container>
         );
 
@@ -405,37 +367,33 @@ function App() {
         return (
           <Container size="lg" mt="md">
             <Title order={1} mb="xl">Mesas</Title>
-            {/* CORREÇÃO AQUI: Mesclando estilos para remover duplicidade */}
             <SimpleGrid cols={{ base: 2, sm: 3, md: 4, lg: 5 }} spacing="lg" mb="xl" >
               {tables.map(table => ( 
                 <Paper 
-                  key={table.id} 
-                  shadow="sm" 
-                  p="lg" 
-                  radius="md" 
-                  withBorder 
-                  onClick={() => handleSelectTable(table)} 
-                  style={{ 
-                    cursor: 'pointer', 
-                    textAlign: 'center', 
-                    backgroundColor: '#e8f5e9',
-                    display: 'flex', // Mesclado
-                    alignItems: 'center', // Mesclado
-                    justifyContent: 'center' // Mesclado
-                  }} 
-                  mih={100} 
+                  key={table.id} shadow="sm" p="lg" radius="md" withBorder onClick={() => handleSelectTable(table)} 
+                  // ✨ USO DO BADGE PARA MOSTRAR O TOTAL ✨
+                  style={{ cursor: 'pointer', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }} 
+                  bg={(table.currentTotal || 0) > 0 ? 'red.1' : 'green.1'} mih={100} 
                 > 
                   <Text fw={700} size="lg">{table.name}</Text> 
+                  {(table.currentTotal || 0) > 0 && (
+                    <Badge color="red" variant="light" mt="xs" size="lg">
+                      R$ {Number(table.currentTotal).toFixed(2)}
+                    </Badge>
+                  )}
                 </Paper> 
               ))}
             </SimpleGrid>
             <hr style={{ margin: '30px 0', border: 'none', borderTop: '2px solid lightblue' }} />
             <Title order={1} mb="xl">Cozinha (KDS)</Title>
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
-              {kdsOrders.length === 0 && <Text c="dimmed">Nenhum pedido pendente.</Text>}
-              {kdsOrders.map(order => (
+              {kdsOrders.filter(o => o.status === 'PENDING').length === 0 && <Text c="dimmed">Cozinha vazia.</Text>}
+              {kdsOrders.filter(o => o.status === 'PENDING').map(order => (
                 <Paper key={order.id} shadow="md" p="md" radius="md" withBorder bg="yellow.1">
-                  <Title order={3} mb="sm">#{order.id.substring(0, 4)}</Title>
+                  <Group justify="space-between" mb="xs">
+                    <Title order={4}>#{order.id.substring(0, 4)}</Title>
+                    <Button size="xs" color="dark" onClick={() => handleOrderReady(order.id)}>Pronto</Button>
+                  </Group>
                   <List size="sm">{order.items.map(item => ( <List.Item key={item.id}><Text span fw={700}>{item.quantity}x</Text> {item.product.name}</List.Item> ))}</List>
                 </Paper>
               ))}
@@ -445,84 +403,26 @@ function App() {
     }
   };
   
-  if (!isAuthenticated) {
-    if (appView === 'LOGIN') {
-      return (
-        <Container size={420} my={40}>
-          <Title ta="center">Login</Title>
-          <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleLogin}>
-            <Stack>
-              <TextInput label="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required />
-              <PasswordInput label="Senha" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
-              {authError && <Text c="red" size="sm">{authError}</Text>}
-              <Button type="submit" fullWidth>Entrar</Button>
-              <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('REGISTER')} size="sm" ta="center">Criar conta</Anchor>
-            </Stack>
-          </Paper>
-        </Container>
-      );
-    }
-    return (
-      <Container size={420} my={40}>
-        <Title ta="center">Registro</Title>
-        <Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleRegister}>
-          <Stack>
-            <TextInput label="Empresa" value={registerCompanyName} onChange={(e) => setRegisterCompanyName(e.target.value)} required />
-            <TextInput label="Nome" value={registerName} onChange={(e) => setRegisterName(e.target.value)} required />
-            <TextInput label="Email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} required />
-            <PasswordInput label="Senha" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} required />
-            {authError && <Text c="red" size="sm">{authError}</Text>}
-            <Button type="submit" fullWidth>Registrar</Button>
-            <Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('LOGIN')} size="sm" ta="center">Voltar para login</Anchor>
-          </Stack>
-        </Paper>
-      </Container>
-    );
+  if (!isAuthenticated) { 
+    if (appView === 'LOGIN') return ( <Container size={420} my={40}><Title ta="center">Login</Title><Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleLogin}><Stack><TextInput label="Email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required /><PasswordInput label="Senha" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />{authError && <Text c="red" size="sm">{authError}</Text>}<Button type="submit" fullWidth>Entrar</Button><Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('REGISTER')} size="sm" ta="center">Criar conta</Anchor></Stack></Paper></Container> );
+    return ( <Container size={420} my={40}><Title ta="center">Registro</Title><Paper withBorder shadow="md" p={30} mt={30} radius="md" component="form" onSubmit={handleRegister}><Stack><TextInput label="Empresa" value={registerCompanyName} onChange={(e) => setRegisterCompanyName(e.target.value)} required /><TextInput label="Nome" value={registerName} onChange={(e) => setRegisterName(e.target.value)} required /><TextInput label="Email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} required /><PasswordInput label="Senha" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} required />{authError && <Text c="red" size="sm">{authError}</Text>}<Button type="submit" fullWidth>Registrar</Button><Anchor component="button" type="button" c="dimmed" onClick={() => setAppView('LOGIN')} size="sm" ta="center">Voltar para login</Anchor></Stack></Paper></Container> );
   }
 
   return (
-    <AppShell
-      header={{ height: 60 }}
-      navbar={{
-        width: 300,
-        breakpoint: 'sm',
-        collapsed: { mobile: !mobileOpened, desktop: true },
-      }}
-      padding="md"
-    >
+    <AppShell header={{ height: 60 }} navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !mobileOpened, desktop: true }, }} padding="md">
       <AppShell.Header>
         <Group h="100%" px="md">
           <Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" />
           <Title order={3}>Meu PDV</Title>
           <Group ml="xl" gap={0} visibleFrom="sm">
             <Button variant={currentView.includes('TABLE') ? 'light' : 'subtle'} onClick={() => setCurrentView('TABLE_SELECTION')}>PDV</Button>
-            {userRole === 'DONO' && <>
-              <Button variant={currentView === 'DASHBOARD' ? 'light' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dash</Button>
-              <Button variant={currentView === 'MANAGEMENT' ? 'light' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button>
-              <Button variant={currentView === 'FINANCIAL' ? 'light' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Finan</Button>
-            </>}
+            {userRole === 'DONO' && <> <Button variant={currentView === 'DASHBOARD' ? 'light' : 'subtle'} onClick={() => setCurrentView('DASHBOARD')}>Dash</Button> <Button variant={currentView === 'MANAGEMENT' ? 'light' : 'subtle'} onClick={() => setCurrentView('MANAGEMENT')}>Gestão</Button> <Button variant={currentView === 'FINANCIAL' ? 'light' : 'subtle'} onClick={() => setCurrentView('FINANCIAL')}>Finan</Button> </>}
           </Group>
            <Button variant="default" ml="auto" onClick={handleLogout}>Sair</Button>
         </Group>
       </AppShell.Header>
-
-      <AppShell.Navbar p="md">
-        <Stack>
-          <Button variant="subtle" onClick={() => { setCurrentView('TABLE_SELECTION'); toggleMobile(); }}>Mesas & PDV</Button>
-          {userRole === 'DONO' && <>
-            <Button variant="subtle" onClick={() => { setCurrentView('DASHBOARD'); toggleMobile(); }}>Dashboard</Button>
-            <Button variant="subtle" onClick={() => { setCurrentView('MANAGEMENT'); toggleMobile(); }}>Gestão</Button>
-            <Button variant="subtle" onClick={() => { setCurrentView('FINANCIAL'); toggleMobile(); }}>Financeiro</Button>
-          </>}
-          <Button variant="outline" color="red" onClick={handleLogout}>Sair</Button>
-        </Stack>
-      </AppShell.Navbar>
-
-      <AppShell.Main>
-        <Container size="xl" p={0}>
-          {renderView()}
-        </Container>
-      </AppShell.Main>
+      <AppShell.Navbar p="md"><Stack><Button variant="subtle" onClick={() => { setCurrentView('TABLE_SELECTION'); toggleMobile(); }}>PDV</Button>{userRole === 'DONO' && <><Button variant="subtle" onClick={() => { setCurrentView('DASHBOARD'); toggleMobile(); }}>Dash</Button><Button variant="subtle" onClick={() => { setCurrentView('MANAGEMENT'); toggleMobile(); }}>Gestão</Button><Button variant="subtle" onClick={() => { setCurrentView('FINANCIAL'); toggleMobile(); }}>Finan</Button></>}<Button variant="outline" color="red" onClick={handleLogout}>Sair</Button></Stack></AppShell.Navbar>
+      <AppShell.Main><Container size="xl" p={0}>{renderView()}</Container></AppShell.Main>
     </AppShell>
   );
 }
