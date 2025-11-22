@@ -3,12 +3,12 @@ import { PrismaClient, Role } from '@prisma/client';
 import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
-import { Decimal } from '@prisma/client/runtime/library';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
-import multer from 'multer';
-import path from 'path';
+import { Decimal } from '@prisma/client/runtime/library'; // ✨ Importação do Decimal
+import bcrypt from 'bcrypt'; // ✨ Importação do Bcrypt
+import jwt from 'jsonwebtoken'; // ✨ Importação do JWT
+import { createClient } from '@supabase/supabase-js'; // ✨ Importação do Supabase
+import multer from 'multer'; // ✨ Importação do Multer
+import path from 'path'; // ✨ Importação do Path
 
 const app = express();
 app.use(cors());
@@ -20,21 +20,45 @@ const io = new Server(server, {
 });
 
 const prisma = new PrismaClient();
-const port = 3333;
+const port = process.env.PORT || 3333;
 
-const JWT_SECRET_KEY = "SEU_PROJETO_ESTA_FICANDO_INCRIVEL";
+const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY || "SEU_PROJETO_ESTA_FICANDO_INCRIVEL";
 
 // --- CONFIGURAÇÃO DO SUPABASE STORAGE E MULTER ---
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-const upload = multer({ storage: multer.memoryStorage() });
+// Certifique-se de que estas variáveis estão no seu .env
+const supabaseUrl = process.env.SUPABASE_URL || ""; 
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || "";
 
-// --- INTERFACES ---
-interface TokenPayload { userId: string; role: Role; name: string; companyId: string; iat: number; exp: number; }
-declare global { namespace Express { export interface Request { user: TokenPayload; } } }
+// Validação simples para evitar erro se faltar env em dev
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
-// --- MIDDLEWARES ---
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
+
+// ==================================================================
+// INTERFACES E EXTENSÕES
+// ==================================================================
+interface TokenPayload {
+  userId: string;
+  role: Role;
+  name: string;
+  companyId: string;
+  iat: number;
+  exp: number;
+}
+
+declare global {
+  namespace Express {
+    export interface Request {
+      user: TokenPayload;
+    }
+  }
+}
+
+// ==================================================================
+// MIDDLEWARES
+// ==================================================================
 const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ message: "Token não fornecido." });
@@ -43,17 +67,22 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
     const decoded = jwt.verify(token, JWT_SECRET_KEY);
     req.user = decoded as TokenPayload;
     return next();
-  } catch (error) { return res.status(401).json({ message: "Token inválido." }); }
+  } catch (error) {
+    return res.status(401).json({ message: "Token inválido." });
+  }
 };
 
 const checkRole = (roles: Role[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!roles.includes(req.user.role)) return res.status(403).json({ message: "Acesso negado." });
+    const userRole = req.user.role;
+    if (!roles.includes(userRole)) return res.status(403).json({ message: "Acesso negado." });
     return next();
   };
 };
 
-// --- AUTH ---
+// ==================================================================
+// ROTAS DE AUTENTICAÇÃO
+// ==================================================================
 app.post('/auth/register', async (request, response) => {
   const { email, name, password, companyName } = request.body; 
   if (!companyName) return response.status(400).json({ message: "Nome da empresa obrigatório." });
@@ -81,21 +110,27 @@ app.post('/auth/login', async (request, response) => {
   return response.status(200).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, companyId: user.companyId } });
 });
 
-// --- GERAIS ---
+// ==================================================================
+// ROTAS GERAIS (Ingredientes, Produtos, Upload)
+// ==================================================================
 app.get('/ingredients', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const ingredients = await prisma.ingredient.findMany({ where: { companyId: request.user.companyId }, orderBy: { name: 'asc' } });
   return response.json(ingredients);
 });
+
 app.post('/ingredients', authMiddleware, checkRole(['DONO']), async (request, response) => {
+  const { name, stockQuantity, unit } = request.body;
   try {
-    const ingredient = await prisma.ingredient.create({ data: { name: request.body.name, stockQuantity: new Decimal(request.body.stockQuantity), unit: request.body.unit, companyId: request.user.companyId } });
+    const ingredient = await prisma.ingredient.create({ data: { name, stockQuantity: new Decimal(stockQuantity), unit, companyId: request.user.companyId } });
     return response.status(201).json(ingredient);
   } catch (error) { return response.status(409).json({ message: "Ingrediente já existe." }); }
 });
+
 app.get('/products', authMiddleware, async (request, response) => {
   const products = await prisma.product.findMany({ where: { companyId: request.user.companyId }, orderBy: { name: 'asc' } });
   return response.status(200).json(products);
 });
+
 app.post('/products', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const { name, price, recipeItems } = request.body;
   try {
@@ -110,9 +145,13 @@ app.post('/products', authMiddleware, checkRole(['DONO']), async (request, respo
     return response.status(201).json(product);
   } catch (error) { return response.status(409).json({ message: "Produto já existe." }); }
 });
+
 app.post('/products/:id/upload', authMiddleware, checkRole(['DONO']), upload.single('image'), async (request: Request, response: Response) => {
     const { id: productId } = request.params;
     if (!request.file) return response.status(400).json({ message: "Nenhum arquivo enviado." });
+    
+    if (!supabase) return response.status(500).json({ message: "Supabase não configurado." });
+
     const fileExtension = path.extname(request.file.originalname);
     const fileName = `${request.user.companyId}/${productId}_${Date.now()}${fileExtension}`;
     try {
@@ -124,30 +163,19 @@ app.post('/products/:id/upload', authMiddleware, checkRole(['DONO']), upload.sin
     } catch (error) { return response.status(500).json({ message: "Falha no upload." }); }
 });
 
-// --- MESAS E PEDIDOS (COM ATUALIZAÇÕES PARA PERSISTÊNCIA) ---
+// ==================================================================
+// ROTAS DE MESAS E PEDIDOS
+// ==================================================================
 app.get('/tables', authMiddleware, async (request, response) => {
-  const companyId = request.user.companyId;
   const tables = await prisma.table.findMany({ 
-    where: { companyId: companyId },
+    where: { companyId: request.user.companyId },
     orderBy: { name: 'asc' },
-    include: {
-      // ✨ INCLUIR ITENS E PRODUTOS NOS PEDIDOS ABERTOS ✨
-      orders: {
-        where: { status: { not: 'PAID' } },
-        include: {
-          items: {
-            include: { product: true }
-          }
-        }
-      }
-    }
+    include: { orders: { where: { status: { not: 'PAID' } } } }
   });
-
-  const tablesWithTotal = tables.map((t: any) => ({
+  
+  const tablesWithTotal = tables.map(t => ({
     ...t,
-    currentTotal: t.orders.reduce((acc: number, o: any) => acc + Number(o.total), 0),
-    // ✨ Enviamos os pedidos abertos para o frontend mostrar os itens antigos
-    activeOrders: t.orders 
+    currentTotal: t.orders.reduce((acc: number, o: any) => acc + Number(o.total), 0)
   }));
 
   return response.status(200).json(tablesWithTotal);
@@ -168,10 +196,21 @@ app.post('/tables/:id/pay', authMiddleware, async (request, response) => {
     const unpaidOrders = await prisma.order.findMany({ where: { tableId, companyId, status: { not: 'PAID' } } });
     if (unpaidOrders.length === 0) return response.status(400).json({ message: "Sem pedidos em aberto." });
     const totalAmount = unpaidOrders.reduce((acc, order) => acc + Number(order.total), 0);
-    await prisma.order.updateMany({ where: { tableId, companyId, status: { not: 'PAID' } }, data: { status: 'PAID', paymentMethod: paymentMethod } });
-    await prisma.financialTransaction.create({ data: { description: `Pagamento Mesa - ${paymentMethod}`, amount: new Decimal(totalAmount), type: 'RECEITA', paidAt: new Date(), companyId } });
-    // Emite evento para atualizar mesas em tempo real
-    io.emit('order_updated', { tableId }); 
+    
+    await prisma.order.updateMany({
+      where: { tableId, companyId, status: { not: 'PAID' } },
+      data: { status: 'PAID', paymentMethod: paymentMethod }
+    });
+    
+    await prisma.financialTransaction.create({
+      data: { 
+        description: `Pagamento Mesa - ${paymentMethod}`, 
+        amount: new Decimal(totalAmount), 
+        type: 'RECEITA', 
+        paidAt: new Date(), 
+        companyId: companyId 
+      }
+    });
     return response.json({ message: "Conta fechada!", total: totalAmount });
   } catch (error) { return response.status(500).json({ error: "Erro ao fechar conta" }); }
 });
@@ -207,7 +246,11 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
   try {
     const [createdOrder] = await prisma.$transaction([
       prisma.order.create({
-        data: { total, tableId, userId, companyId, status: 'PENDING', items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) } },
+        data: {
+          total, tableId, userId, companyId,
+          status: 'PENDING',
+          items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
+        },
         include: { items: { include: { product: true } } }
       }),
       ...stockUpdates
@@ -227,16 +270,22 @@ app.patch('/orders/:id/ready', authMiddleware, async (request, response) => {
   } catch (error) { return response.status(500).json({ error: "Erro ao atualizar pedido" }); }
 });
 
+// ==================================================================
+// ROTAS DO FINANCEIRO E DASHBOARD
+// ==================================================================
 app.get('/financial/transactions', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const transactions = await prisma.financialTransaction.findMany({ where: { companyId: request.user.companyId }, orderBy: { createdAt: 'desc' } });
   return response.status(200).json(transactions);
 });
+
 app.post('/financial/transactions', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const { description, amount, type, dueDate } = request.body;
   try {
-    const transaction = await prisma.financialTransaction.create({ data: { description, amount: new Decimal(amount), type, dueDate: dueDate ? new Date(dueDate) : null, companyId: request.user.companyId } });
+    const transaction = await prisma.financialTransaction.create({
+      data: { description, amount: new Decimal(amount), type, dueDate: dueDate ? new Date(dueDate) : null, companyId: request.user.companyId }
+    });
     return response.status(201).json(transaction);
-  } catch (error) { return response.status(500).json({ message: "Erro ao criar transação." }); }
+  } catch (error) { console.error("Failed to create transaction: ", error); return response.status(500).json({ message: "Failed to create transaction." }); }
 });
 
 app.get('/dashboard/today', authMiddleware, checkRole(['DONO']), async (request, response) => {
@@ -251,7 +300,10 @@ app.get('/dashboard/today', authMiddleware, checkRole(['DONO']), async (request,
         const product = productDetails.find(pd => pd.id === p.productId);
         return { productId: p.productId, name: product?.name || 'Produto não encontrado', quantitySold: p._sum?.quantity || 0 }
     });
-    return response.status(200).json({ totalRevenue: salesData._sum?.total || 0, orderCount: salesData._count?.id || 0, topProducts });
+    const dashboardData = { totalRevenue: salesData._sum?.total || 0, orderCount: salesData._count?.id || 0, topProducts };
+    return response.status(200).json(dashboardData);
 });
 
-server.listen(port, () => { console.log(`🚀 Servidor rodando na porta ${port}`); });
+server.listen(port, () => {
+  console.log(`🚀 Servidor rodando na porta ${port}`);
+});
