@@ -64,6 +64,7 @@ model Product {
   name        String
   price       Decimal
   imageUrl    String?
+  category    String      @default("COMIDA") // ✨ NOVO: 'COMIDA' ou 'BEBIDA'
   createdAt   DateTime    @default(now())
   orderItems  OrderItem[]
   recipeItems RecipeItem[]
