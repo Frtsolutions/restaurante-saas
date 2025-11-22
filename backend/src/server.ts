@@ -107,7 +107,7 @@ app.post('/auth/login', async (request, response) => {
 });
 
 // ==================================================================
-// ROTAS GERAIS (Ingredientes, Produtos, Upload)
+// ROTAS GERAIS
 // ==================================================================
 app.get('/ingredients', authMiddleware, checkRole(['DONO']), async (request, response) => {
   const ingredients = await prisma.ingredient.findMany({ where: { companyId: request.user.companyId }, orderBy: { name: 'asc' } });
@@ -215,7 +215,6 @@ type OrderItemInput = { productId: string; quantity: number; }
 app.post('/orders', authMiddleware, async (request: Request, response: Response) => {
   const { userId, companyId } = request.user;
   const { items, tableId } = request.body as { items: OrderItemInput[], tableId?: string };
-
   const productIds = items.map(item => item.productId);
   const productsInDb = await prisma.product.findMany({ where: { id: { in: productIds }, companyId }, include: { recipeItems: true } });
   if (productsInDb.length !== items.length) return response.status(400).json({ message: "Produtos inválidos." });
@@ -248,7 +247,6 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
           status: 'PENDING',
           items: { create: items.map(item => ({ productId: item.productId, quantity: item.quantity })) }
         },
-        // ✨ CORREÇÃO AQUI: Incluir 'table' para o KDS receber o nome da mesa ✨
         include: { items: { include: { product: true } }, table: true }
       }),
       ...stockUpdates
@@ -258,11 +256,32 @@ app.post('/orders', authMiddleware, async (request: Request, response: Response)
   } catch (error) { return response.status(500).json({ message: "Erro ao processar pedido." }); }
 });
 
+// ✨ ROTA KDS MARCAR COMO PRONTO (ATUALIZADA E CORRIGIDA) ✨
 app.patch('/orders/:id/ready', authMiddleware, async (request, response) => {
   const { id } = request.params;
   const { companyId } = request.user;
+  
   try {
-    const order = await prisma.order.update({ where: { id, companyId }, data: { status: 'READY' } });
+    // 1. Busca o pedido atual para checar o status
+    const currentOrder = await prisma.order.findFirst({
+      where: { id, companyId }
+    });
+
+    if (!currentOrder) {
+      return response.status(404).json({ message: "Pedido não encontrado." });
+    }
+
+    // ✨ PROTEÇÃO: Se já estiver PAGO (PAID), não faz nada ✨
+    if (currentOrder.status === 'PAID') {
+      return response.status(400).json({ message: "Este pedido já foi pago e não pode ser alterado." });
+    }
+
+    // 2. Se não estiver pago, atualiza para READY
+    const order = await prisma.order.update({ 
+      where: { id }, 
+      data: { status: 'READY' } 
+    });
+    
     io.emit('order_updated', order);
     return response.json(order);
   } catch (error) { return response.status(500).json({ error: "Erro ao atualizar pedido" }); }
